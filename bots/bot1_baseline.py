@@ -435,7 +435,10 @@ def evaluate(board: chess.Board) -> int:
 
     if phase > TOTAL_PHASE:
         phase = TOTAL_PHASE
-    score = (midgame * phase + endgame * (TOTAL_PHASE - phase)) // TOTAL_PHASE
+    # Truncate toward zero, not toward negative infinity. Floor division makes a
+    # position and its mirror differ by one centipawn, which is a colour bias.
+    blended = midgame * phase + endgame * (TOTAL_PHASE - phase)
+    score = blended // TOTAL_PHASE if blended >= 0 else -(-blended // TOTAL_PHASE)
     if board.turn != chess.WHITE:
         score = -score
     return score + TEMPO

@@ -1,0 +1,654 @@
+# Iteration log
+
+Living document. Update it at the end of every iteration, before starting the
+next one. It exists so that no future iteration re-derives something we already
+paid for, and so that no bug we have already found ships twice.
+
+**Update protocol.** Add a row to the ledger (§1). Tick or extend the regression
+checklist (§4). Move anything from "next steps" (§8) into the ledger with its
+measured result, including the ones that failed — a change that measured neutral
+is information and must not be silently retried. Correct any fact in §3 that
+turned out wrong rather than leaving both versions in.
+
+**Naming.** The NNUE build is `bot3_nnue` and its tooling is the `v3_*` files.
+Earlier revisions of this log called it `bot2_nnue`; that name is retired and
+every reference below has been renamed. The families are:
+
+| Family | Build | What it is |
+|---|---|---|
+| 1 | `bot1_baseline` | Classical: PVS-ish negamax, TT, quiescence, PSTs |
+| 2 | `bot2_standard` | From-scratch rebuild. Unshipped, not separated from bot1 |
+| 3 | `bot3_nnue` | Learned eval on bot1's search. Unshipped, data fault diagnosed |
+| 4 | `bot4_ordering` | bot1's eval on a rebuilt search. **Strongest build measured** |
+| 5 | *next* | bot4's search + bot3's net + balanced data. See §8 P0 |
+
+---
+
+## 0. How this project persists — read first
+
+Nothing about the working environment survives a session. Concretely:
+
+| Where | Survives? | Use it for |
+|---|---|---|
+| **Project files** | **Yes.** Read-only at `/mnt/project/`, always in context | **The source of truth.** Every file the next iteration needs to read or edit must be here |
+| **GitHub repo** (`jmsyuen/chessathon`, public) | **Yes**, and fetchable from the sandbox | Binary artifacts project files cannot hold: `.npz` weights, opening books |
+| **Past chats in this project** | Yes, searchable | Rationale, measurements, why a decision was made. **Not** for recovering source code |
+| Assistant sandbox (`/home/claude/...`) | **No — destroyed at session end** | Scratch only: data sets, engine binaries, checkpoints |
+
+**This has already cost us.** §5 of an earlier version of this log listed
+`h2h.py`, `run_rung.py`, `autopsy.py`, `gen_book.py`, `test_edges.py` and
+`test_conversion.py` as existing tooling. **None of them existed anywhere.** They
+were written in a sandbox that has since been wiped and were never uploaded. A
+later iteration hit the exact problems `h2h.py` and `run_rung.py` were built to
+solve — chunking long runs past the ~5 minute call limit — and re-derived worse
+versions from scratch.
+
+Iteration 3 (bot4) re-derived `h2h.py` for the third time. It is now uploaded.
+
+Past chats are a poor substitute for uploading. A file created once and then
+patched five times in-session cannot be reliably reconstructed from a transcript.
+
+**Rule: if a tool is worth a row in §5, upload it the same day.**
+
+**Clone the repo first thing, do not ask for re-uploads.** Verified fetchable
+from the sandbox — `codeload.github.com` and `raw.githubusercontent.com` are
+allowlisted, a private repo would not work because there are no credentials:
+
+```
+curl -sL https://codeload.github.com/jmsyuen/chessathon/tar.gz/refs/heads/main | tar -xz
+```
+
+`bots/bot3_nnue/bot3_nnue.npz` is there and loads correctly (QA=1024, QB=2048,
+hidden=256). `tools/` now holds `h2h.py`, `kernelbench.py`, `gen_openings.py`
+and `openings.py`. **One gap left: `selftest.py` and `bench.py` are still
+project-files-only**, so a clone can run neither the correctness gate nor the
+strength gate. Add those two to `tools/` and the repo becomes self-sufficient —
+a session would then need no uploads at all, which is the whole point of §0.
+`bota_serena.py` is a teammate's bot held for later testing, deliberately
+outside the `bot<N>` numbering; it is not one of our iterations and owes no
+ledger row. **Standing cost:** the repo is public, so the engine is visible
+to every other team before the locked-build Swiss. Not a rules breach, but it
+should be a deliberate choice rather than a side effect.
+
+Scratch that is expected to die and should never be uploaded: the training csv
+(~59 MB) and its parsed cache (~130 MB), float checkpoints, and above all the
+Stockfish binary — shipping or calling an engine from the zip is retroactive
+disqualification.
+
+---
+
+## 1. Iteration ledger
+
+| # | Date | Build | Change | Measured result | Verdict |
+|---|---|---|---|---|---|
+| 0 | 3 Sep | bot1 | Baseline, speed-to-ship. PVS-ish negamax, TT, quiescence, null move, LMR, aspiration, tapered eval, mating drive, contempt | 100% vs SF d4; 50% vs SF d6 — **withdrawn, see caveat** | Superseded by bot4 |
+| 1 | 3 Sep | bot2_standard | From-scratch rebuild: staged movegen, bitboard eval, SEE, lazy eval, pawn hash | 60% vs bot1 over 15 games (Elo +70 ±184); 0 losses in 52 games | **Not separated. Not shipped.** |
+| 2 | 3 Sep | bot3_nnue | Learned eval: material + (768→256)×2 perspectives, SCReLU, int16, numba kernel. bot1's search, ordering, TT, `_budget`, `_sync` and `get_move` wrapper carried over unchanged | 16.7% vs bot1, 12 games at 3s+100ms (+1 =2 −9, Elo −280, 95% −inf to −113). Selftest gate FAILS one tactic | **Not shipped. Root cause found — see §4 bug #8** |
+| 3 | 3 Sep | **bot4_ordering** | bot1's evaluation **unchanged** except two fixes; search rebuilt for branching factor: SEE, staged movegen, countermove + continuation history with gravity and malus, IIR, RFP, LMP, futility, SEE pruning, log-table LMR, progressive aspiration, two-tier TT, 300-ply adjudication blend | **+20 =4 −6 over 30 games vs bot1fix at 8s+0.5s = 73.3%, +176 Elo (95% CI +63 to +342).** SPRT LLR +0.31 of ±2.94 — undecided. Selftest **fully clean**. 16/16 vs greedy. **Zero failures in 46 games.** Equal-or-deeper than bot1 on 6/6 suite positions using **5.5× fewer nodes** | **Strongest build. Ship candidate. SPRT incomplete** |
+
+**Caveat on row 0, now settled.** "100% vs SF d4" never reproduced and is
+withdrawn. Paired ladder runs in one session (§3) put bot1fix's 50% crossover at
+about **100 Stockfish nodes** at 6s+0.06s, not the ~340 recorded earlier. Both
+figures come from 6-game rungs and neither is trustworthy; see §3 for what that
+actually tells us about rung sample size.
+
+**Standing conclusion (changed this iteration).** **bot4 is the strongest build
+and is what would ship today.** bot1 is superseded — bot4 has the same evaluation
+and a strictly better search, and beat it 73.3% over 30 games with zero failures.
+bot2_standard and bot3_nnue remain unshipped. bot3_nnue is a working NNUE
+pipeline with a correctly diagnosed data fault, not a candidate — but its
+architecture is sound and §8 P0 is to marry it to bot4's search.
+
+---
+
+## 2. Metrics we agreed on, and what has actually been measured
+
+Authority order matters. Items 1 and 2 gate everything else.
+
+| # | Metric | Target | Status |
+|---|---|---|---|
+| 1 | Self-play Elo vs previous version, SPRT `elo0=0, elo1=5, α=β=0.05` | pass before merge | **PARTIAL** — bot4 vs bot1fix 30 games, LLR +0.31 of +2.94. Machinery now exists (`tools/h2h.py`); needs ~130 games total |
+| 2 | Failure rate per 100 games (flag/crash/illegal/drawn-while-winning) | exactly zero | **PASS** for all four builds. bot4: 0 in 46 games |
+| 3 | Nodes per second on fixed benchmark suite | track per build | bot1 27.0k, bot2 14–18k, bot3_nnue 42–57k, **bot4 12.9k** — see the note below, low nps is not the story |
+| 4 | First-move cutoff rate | >85% | **MEASURED at last: bot4 90.6%** over 10,201 cutoffs on the fixed suite. bot1 not instrumented |
+| 5 | Average depth at real 120s+0.5s control | sanity check | **STILL A GAP.** bot4 measured only to 12s |
+
+**Metric 3 is now actively misleading and must be read with metric 4.** bot4 runs
+at **12.9k nps against bot1's 27.0k** — less than half — and is decisively
+stronger. On the fixed suite at an identical 949/1898 ms budget:
+
+| Position | bot4 | bot1fix |
+|---|---|---|
+| start | d6, 2,142 nodes, 137 ms | d6, 23,012 nodes, 702 ms |
+| italian | **d6**, 4,460, 408 ms | d5, 33,841, 1,454 ms |
+| sicilian | d6, **2,944**, 193 ms | d6, 43,607, 1,473 ms |
+| french | **d5**, 8,443, 637 ms | d4, 12,854, 564 ms |
+| queens gambit | **d7**, 8,700, 827 ms | d4, 11,614, 541 ms |
+| kings indian | **d6**, 4,331, 308 ms | d5, 40,090, 1,690 ms |
+
+Equal or greater depth in every position, on 5.5× fewer nodes and 2.6× less wall
+time, with an identical evaluation on both sides. **Track nodes-to-depth, not
+nodes per second.** A build that halves its node rate and quarters its node count
+is a large win, and metric 3 alone scores it as a regression.
+
+---
+
+## 3. Environment facts — do not re-derive
+
+**Profiling (python-chess 1.11.2, one core).** These drive architecture:
+
+| Operation | Cost | Consequence |
+|---|---|---|
+| `list(board.legal_moves)` | 33–36 us | Dominates. Avoiding generation beats optimising anything else |
+| `board.push()` + `pop()` | 6 us | Cheap. Push-then-test is cheaper than `gives_check()` |
+| `board.is_legal(move)` | ~8 us | **Cheaper than generating.** This is what makes staged movegen pay |
+| `board._transposition_key()` | 1 us | Cheap. **Hand-rolled incremental Zobrist is not worth the bug risk** |
+| bot1 `evaluate()`, pure Python | 12.5 us | ~25% of node cost |
+| **NNUE forward, numba, hidden 256, 2 perspectives** | **3.2 us** | ~8% of node cost |
+| Packing 8 bitboards for the kernel | 0.55 us | Included in the 3.2 us above |
+| `_see()` on one capture, pure Python | ~10 us | Only run when victim value < attacker value; that filter removes most calls |
+
+**A jitted learned evaluation is cheaper than a Python piece-square evaluation
+on this platform.** This inverts the usual assumption. bot3_nnue searched 20–40%
+faster than bot1 and reached identical depths. Any future eval work should assume
+the numba path is free and spend the budget on quality.
+
+**Transposition table sizing — corrected.** bot1's comment claims an entry costs
+"roughly half a kilobyte". Measured with `tracemalloc`, including freshly built
+key tuples: **268 bytes per entry**. bot4 therefore runs two tiers of 500k
+entries for about **270 MB** against a 2 GB container, and never calls
+`dict.clear()` mid-search. Ageing is `_tt_old = _tt; _tt = {}`, which drops half
+the table in constant time; probes check the live tier then the old one and
+promote on a hit.
+
+**Quantisation.**
+- Scale is not a free parameter. QB=64 (the common bullet default) costs
+  **35.6 cp mean / 257 cp max** error against the float model. QA=512/QB=1024
+  costs 13.2/69. **QA=1024/QB=2048 costs 0.8/4.**
+- int64 accumulation has ample headroom at those scales: worst case ~2.2e12
+  against a 9.2e18 limit. Checked, not assumed.
+- **Requantising needs no retraining.** It is a save-time transform on the float
+  checkpoint. Three re-saves took seconds.
+- Always measure quantised-vs-float before believing a net. A scale error does
+  not crash; it just makes the search thrash.
+
+**Toolchain.**
+- `pip install chess` gives 1.11.2, exactly the competition version. `numba`
+  gives 0.67.0, also exact.
+- **Stockfish is one command: `apt-get download stockfish` then
+  `dpkg-deb -x`.** `archive.ubuntu.com` is allowlisted and it fetched 33.5 MB in
+  2 s, giving Stockfish 16 at 866k nps. This is far simpler than the GitHub
+  release-asset route and should be the default. The GitHub route still works if
+  a specific version is needed: `release-assets.githubusercontent.com` is
+  allowlisted, the API is rate limited, so build the URL by hand —
+  `.../official-stockfish/Stockfish/releases/download/sf_17.1/stockfish-ubuntu-x86-64-avx2.tar`
+- Labelling throughput on one core, including game play-out and filtering:
+  **404 pos/s at `nodes:1200`**, 221 pos/s at `nodes:2500`, 173 pos/s at
+  `nodes:5000`. Use raw UCI pipes; `chess.engine.SimpleEngine` has asyncio
+  overhead that matters at this rate.
+- **torch is not needed to train an NNUE this size and its download is not worth
+  the disk.** numpy plus a jitted sparse gather/scatter is enough.
+- Training cost: 926k positions, hidden 256, batch 4096 — **~6 s per epoch**,
+  40 epochs in 4 minutes on one core. **Data generation costs ~40x what training
+  costs.** Budget accordingly: buy data, not epochs.
+- Sandbox has **1 core**, same as the competition container. No parallel games.
+- **Background processes are reaped between tool calls — `setsid` and `nohup` do
+  not help.** Two runs were lost to this. Additionally **bash calls are killed at
+  ~5 minutes**. Anything long must be foreground, chunked, and checkpointed to
+  disk every iteration. `v3_train.py --state` does this for float weights, Adam
+  moments and the epoch counter. `v3_gendata.py` is line-buffered so a killed run
+  keeps every position it wrote. `tools/h2h.py` checkpoints after every game.
+
+**Stockfish ladder — the crossover number is far noisier than it looks.**
+Paired runs, both builds, same session, same control (6 s + 0.06 s):
+
+| Rung | bot4 | bot1fix |
+|---|---|---|
+| nodes:100 | 62.5% (8 games) | 50.0% (8 games) |
+| nodes:300 | 25.0% (6 games) | 25.0% (6 games) |
+| nodes:1000 | **33.3%** (6 games) | **8.3%** (6 games) |
+
+Interpolated 50% crossover: **bot4 ≈ 144 nodes, bot1fix ≈ 100 nodes.**
+
+Two things follow. First, the rig is sound: bot1fix's 8.3% at `nodes:1000`
+reproduces the historically recorded figure exactly. Second, **the earlier
+~340-node crossover for bot1 does not reproduce** — same build, same control,
+this run gives ~100. Neither is wrong; both are 6-game samples. The crossover
+estimate **swings by 3× at 6–8 games per rung**, which promotes the standing
+"use 40+ games per rung" note from advice to a measured requirement. Do not quote
+a crossover from fewer than 40 games per rung, and do not compare a new
+crossover against an old one measured at a different sample size.
+
+**Agent contract (re-verified at source 3 Sep). It does not change once the
+qualifier starts on 4 Sep, so it is now frozen — no need to re-check before the
+lock.**
+- Eligibility: at least one UK university student per team. 50 London seats.
+- Books and tablebases are permitted as shipped data; `chess.polyglot` and
+  `chess.syzygy` are in the base image.
+- Pondering is explicitly allowed: the process keeps its core after `get_move`
+  returns. **No build uses this.** See §8 P2 for the mechanism and the conditions.
+- Import + warm-up: bot1 0.41 s, **bot4 0.30 s**, **bot3_nnue 14 s** (almost all
+  of it importing numba and llvmlite rather than compiling). Against a 60 s
+  budget, so fine, but it is no longer negligible for the NNUE line.
+- numba `cache=False` is mandatory. The platform filesystem is read-only apart
+  from `/tmp`, so a cache write would fail next to the source. `/tmp` also starts
+  empty for every game and is deleted with it, so it is never a cache between
+  games.
+- Weights ship as a second artifact: `agent.py` at the zip root plus
+  `weights/nnue.npz`. `harness/package.py` already includes `weights/` via
+  `DEFAULT_INCLUDES`. Resolve the path from `Path(__file__).resolve().parent`,
+  never from the working directory.
+- **Finished ladder games reveal the curated positions they were played from.**
+  This is the real fix for the opening-set problem and beats guessing. Harvest
+  them once the ladder has run.
+- **House bots play the ladder showing their public CCRL ratings, and cannot
+  qualify.** That is a free, externally-grounded absolute scale. It is worth more
+  than the Stockfish node ladder, which §3 already shows is unreliable at 6-game
+  rungs and which measures altitude against an opponent that blunders in places
+  the field does not. Read our live ladder Elo against the house bots and treat
+  that, not the crossover node count, as the headline altitude number.
+- **The first FEN received is the game's starting position**, and repetition plus
+  fifty-move counts begin there, not from the standard start. `_sync` is correct
+  on this; anything that rebuilds history must stay correct on it.
+- Validation plays **two smoke games against a house agent**, one as each colour,
+  from curated positions, and publishes the verbatim log. stdout/stderr comes back
+  up to **8 KB** — a separate limit from the 4 KB move payload that counts as an
+  illegal move.
+- Process limit is **128** on one core.
+
+**Harness gotchas (confirmed in source).**
+- `board.outcome(claim_draw=True)` — threefold and fifty-move are claimed
+  automatically *against* us. History must be reconstructed from FENs.
+- 300-ply adjudication is **pure material**, no positional terms. **bot4 is the
+  first build to play for it**, ramping the referee's own P1/N3/B3/R5/Q9 formula
+  in from ply 240 to 60% weight at ply 300. Untested in a real long game; one
+  adjudication occurred in the 30-game run and bot4 won it.
+- The 500 ms watchdog grace is not usable slack — the referee flags the instant
+  the clock goes negative.
+- `runner.py` does not wrap `get_move`. Any uncaught exception is a lost game.
+- The zip is first on `sys.path`. Never name a file `chess.py`, `types.py`.
+- stdout cap 4096 bytes; over-cap counts as an illegal move.
+
+---
+
+## 4. Regression checklist — run against every new build
+
+These are the bugs found so far. Most are pattern-level and will recur in any
+rewrite. **Bugs #9 and #10 are new this iteration and are the most dangerous on
+the list, because both present as a mildly weak evaluation rather than a fault.**
+
+| # | Bug | How it presents | Test |
+|---|---|---|---|
+| 1 | Root best move not set on the staged TT path | Engine returns its **depth-1 move** while searching deep. Scored 50% vs `greedy` | Score vs `greedy` must be ~100% |
+| 2 | Unbalanced push/pop on clock abort | Returns a move for the **opponent**. Instant loss. Only fires under time pressure | Fuzz at 50 ms budgets; assert legality |
+| 3 | Quiescence stands pat in check | Can be mated at a leaf and return a material score | Mate-at-leaf positions |
+| 4 | SEE counts illegal king recaptures | Winning captures score as losing; suppressed in ordering, pruned in qsearch | Brute-force swap-off comparison |
+| 5 | Floor division colour bias | Position and its mirror differ by 1 cp. Hit ~34% of positions | `evaluate(b) == evaluate(b.mirror())` |
+| 6 | En passant classified as quiet | Ordered by history, exposed to LMR and futility | Assert ep is treated as a capture |
+| 7 | Mangled boolean (`not x == 0`) | Silently wrong branch | Read every conditional in scaling code |
+| 8 | **Training distribution collapse** | Net scores r=0.95 against engine labels and beats the hand-written eval on mae, then loses 280 Elo. In level positions its correlation is **r ≈ 0**: it learned to count material and nothing else | Correlate eval against engine labels **restricted to \|material\| ≤ 120**, from near-level openings. `v3_evalcmp.py --from-openings --max-imbalance 120` |
+| 9 | **Shallow pruning discards quiet checking moves** | Engine misses forced mates **while reporting a healthy 90% first-move cutoff rate**. Three plies into a sacrifice the only saving move is usually a quiet check, and futility/LMP throw it away | Selftest `mate in 3, black` (`1k1r4/pp1b1R2/3q2pp/4p3/2B5/4Q3/PPP2B2/2K5 b - - 0 1`). Guard: never prune when `board.gives_check(move)`; test only when a prune would otherwise fire |
+| 10 | **Razoring returns a material score from inside a forced mate** | Same symptom as #9 but **unreachable by any move-level guard** — razoring returns before a single move is generated | Same position. bot4's fix was to **remove razoring entirely**; it is worth a few Elo of speed and cost a forced mate |
+
+**bot1 audit result:** fails #5 (134/400 positions measured this iteration; the
+earlier 198/399 figure used a different sample). Fix is one line — truncate
+toward zero instead of `//`. **Now applied as `bot1fix`, verified 0/400.** bot1
+also has #2's missing `try/finally`, currently harmless *only* because it
+searches on `board.copy(stack=False)`. That is protection by accident, not by
+design. Anyone refactoring bot1 to search the tracked board reintroduces a losing
+bug. **bot3_nnue inherits #2**, since it carries bot1's search unchanged.
+
+**bot3_nnue audit result:** **passes #5** — 0 of 400 random positions asymmetric.
+This is structural, not luck: both accumulators are computed relative to the side
+to move and the result is never negated, so there is no white-relative-then-negate
+step for floor division to bias. Any future eval that scores from White's
+perspective and flips the sign reintroduces #5; a two-perspective net cannot.
+**Do not re-audit this.**
+
+**bot4 audit result:** passes 1–7 and 9–10 by construction. #2 is fixed *by
+design* — every `board.push` is inside an explicit `try/finally` rather than
+relying on a stack-free copy. #4 is guarded explicitly in `_see`. #5 is fixed.
+#9 and #10 were found *in bot4 during this iteration* by the selftest and fixed
+before any strength measurement was taken.
+
+### Bug #8 in full
+
+`v3_gendata.py` seeded games with 2–12 uniformly random plies and injected 10%
+random moves during play-out. Result over 926,724 positions: median
+\|material\| is **350 cp**, only **18.3%** are within 60 cp of level, only 31.5%
+within 120 cp. In that distribution material counting explains nearly all the
+variance, so gradient descent never had to learn a positional feature.
+
+Measured on quiet positions from near-level openings, n=100:
+
+| Eval | mae | **r** | sign |
+|---|---|---|---|
+| bot3_nnue, no skip connection | 146 | **−0.030** | 54.0% |
+| bot3_nnue, material skip connection | 119 | **+0.188** | 51.0% |
+| bot1 piece-square | 61 | **+0.336** | 49.0% |
+
+Measured on the *original* lopsided distribution, n=200 — the flattering view
+that hid it for most of the iteration:
+
+| Eval | mae | r | slope |
+|---|---|---|---|
+| bot3_nnue | **222** | 0.944 | **1.11** |
+| bot1 piece-square | 385 | **0.960** | 1.60 |
+
+**Partial fix, implemented and measured.** Material is now a fixed skip
+connection, computed inside the numba kernel — which already walks every piece,
+so it is free — meaning the only thing the net can learn is the positional
+residual. That moved r from −0.030 to +0.188 on identical data. **The
+architecture is now right; the data is still wrong.**
+
+**Cost of the fix.** It also broke one tactic (`hangs nothing, must recapture`
+now plays `c8f5`), which passed before the change. All ten tactics passed with
+the pre-skip net. That regression is unexplained and must be understood, not
+patched around — see §8 P1.
+
+**New and important for bot5.** Bugs #9 and #10 mean **bot4's search amplifies
+evaluation error**. RFP, futility, LMP and the improving flag all key off the
+static evaluation, so a net that is blind in level positions (bug #8) will not
+merely choose badly — it will *prune* badly, on margins computed from a number
+that carries no signal. bot3_nnue on bot1's gentler search lost 280 Elo; the same
+net on bot4's search could lose more. **The evalcmp gate is therefore a hard
+precondition for bot5, not a nicety.**
+
+**Lesson worth keeping:** keep a deliberately terrible calibration opponent
+(`greedy`, one-ply material). A 50% score against it is unmistakable. The same
+bug measured against a real opponent looks like "the eval needs tuning".
+
+---
+
+## 5. Test suite
+
+**The status column is not decoration.** Anything marked *missing* was written in
+a wiped sandbox and no longer exists; those rows are work to redo, not tools to
+run. See §0. Status names a **location**: `in project` = project files only,
+`in repo` = clonable from GitHub only, `both` = safe. Anything sitting in one
+place only is one accident away from the paragraph above.
+
+| File | Status | Catches | Runtime |
+|---|---|---|---|
+| `tools/selftest.py` | **in project only — add to repo** | Tactics, clock edges (0 ms→negative), promotions, ep, castling, single legal move, malformed FEN, endgame conversion, repetition tracking, clock discipline | ~4 min for bot4; split it if it grows |
+| `tools/bench.py` | **in project only — add to repo** | Match play mirroring the referee, alternating colours, Elo with interval | ~20 s/game at 3 s+100 ms |
+| `tools/ladder.py` | both (repo: `bots/ladder.py`) | Stockfish staircase, reports the 50% crossover | ~1 min per 6-game rung at 6 s |
+| `baselines/stockfish/agent.py` | in project (`bot_stockfish_spar.py`) | Stockfish sparring partner speaking the agent contract | — |
+| **`tools/h2h.py`** | **in repo** | **Chunked head-to-head with SPRT, checkpointed after every game.** The fix for the ~5 min call limit, re-derived three times now | 20–130 s/game at 8 s+0.5 s |
+| **`tools/gen_openings.py`** | **in repo** | Generates a varied near-level opening set. **Replaces `gen_book.py` and needs no Stockfish** | ~30 s for 64 positions |
+| **`tools/openings.py`** | **in repo** | 64 generated positions = **128 distinct games**, lifting bench.py's 24-game ceiling | (data) |
+| **`tools/kernelbench.py`** | **in repo** | Fixed 12-position suite: nodes, nps, depth, first-move cutoff rate. Metric 3 and 4 | ~10 s/build |
+| `v3_evalcmp.py` | both (repo: `bots/bot3_nnue/`) | **Bug #8.** Both evals vs fresh engine labels, split by check / capture-best / king-exposed / material level | ~2 min at n=200 |
+| `v3_gendata.py` | both (repo: `bots/bot3_nnue/`) | (generator) Stockfish-labelled self-play. **Contains bug #8** — the file P0 edits first | 404 pos/s |
+| `v3_train.py` | both (repo: `bots/bot3_nnue/`) | (trainer) numpy + numba, jitted sparse gather/scatter, `--state` checkpointing, quantise-on-save | 6 s/epoch |
+| `v3_checknet.py` | both (repo: `bots/bot3_nnue/`) | Quantised kernel vs float model; material sanity | ~30 s |
+| `autopsy.py` | **MISSING** | Was a drawn or lost game ever winnable. **Now wanted: bot4 lost 6 of 30** | ~4 min |
+| `test_edges.py`, `test_conversion.py` | **MISSING** | Superseded by `tools/selftest.py` | — |
+
+Feature encoding is verified identical between `v3_train.py` and the agent kernel
+against a python-chess reference — do not skip that check on any rewrite. A
+silent mismatch looks exactly like a badly trained net.
+
+**The 24-game ceiling is lifted.** `bench.py` OPENINGS has 12 positions and both
+engines are deterministic, so 24 distinct games was the ceiling and every game
+past it was a replay. `tools/openings.py` has 64 → 128 distinct games. **Note
+`tools/ladder.py` still imports OPENINGS from `bench.py`**, which is fine at
+≤24 games per rung but must be repointed before running the 40-game rungs §3
+now requires.
+
+## 6. Measurement costs — read before promising a verdict
+
+| Difference to detect | Games needed |
+|---|---|
+| ~200 Elo (adding quiescence) | ~40 |
+| ~50 Elo (real eval improvement) | 200–400 |
+| ~10 Elo (a tuning tweak) | 2,000–4,000 |
+| 5% score difference at our draw rate | **~246** |
+
+**SPRT termination is slower than the effect size suggests, and this surprised
+us.** With `elo0=0, elo1=5` the two hypotheses differ by a score of 0.500 vs
+0.507, so each game carries very little evidence about *which* is true even when
+the true difference is 176 Elo. Measured LLR growth for bot4 was **~0.02 per
+game** at a 73% score rate, so the ±2.94 boundary needs **roughly 130 games**.
+Budget for that. A large effect does **not** buy early termination here.
+
+At 8 s+0.5 s on one core a game costs 20–130 s. **One core gives roughly 40–80
+games per hour.** A 15-game result is a smoke test, not a verdict. A −280 Elo
+result over 12 games is an exception — the interval excludes zero comfortably.
+
+**Constraint that will not go away:** a black-box `get_move(fen, time_left_ms)`
+cannot be driven at fixed nodes. Cross-engine comparison must be fixed time. Use
+fixed nodes only for A/B testing variants of an engine we control internally.
+
+**Compressed control caveat.** 8–12 s + 0.5 s keeps the increment truthful (both
+time managers assume 500 ms) and compresses only the base. It slightly favours
+lower per-move overhead. Any final candidate must be re-checked at 120 s + 0.5 s.
+
+---
+
+## 7. Known gaps and untested areas
+
+- **bot4 has not passed SPRT.** 30 of ~130 games. This is the single thing
+  standing between the current best build and a clean merge.
+- **bot4 lost 6 of 30 games and none have been examined.** Its pruning is more
+  aggressive than bot1's and two pruning bugs already came out of exactly there.
+  Autopsy before assuming noise.
+- **bot4's stability early-break is untuned and now suspect.** It stops once the
+  best move survives 3 iterations with <20 cp drift at depth ≥6. bot4's search is
+  now efficient enough that it hits that condition with **most of the soft budget
+  unspent** — it used 137–827 ms of a 949 ms soft budget across the suite. That
+  was tuned for an engine that used its whole budget. Re-test with the break
+  disabled; it may be giving away a ply.
+- **The training data is not balanced.** The single blocking issue for the NNUE
+  line. See §4 bug #8 and §8 P0.
+- **King safety is a shared weakness.** On quiet king-exposed positions *both*
+  evals correlate **negatively** with Stockfish (bot3_nnue −0.575, bot1 −0.454).
+  n=13, so this is a lead and not a finding — but if it holds at n≥100 it is a
+  large gain available to whichever engine ships.
+- **Endgame conversion is solved in bot4.** K+R **49→19 plies**, K+Q 23→13,
+  K+R+B 19, and **K+2B converts at last in 19 plies** (bot1 never did; bot3_nnue
+  took 31). The fix was attracting the strong side's minors toward the weak king
+  on top of the corner drive. **This supersedes the old P2 item "port bot3_nnue's
+  conversion into bot1"** — bot4 is now the best converter of any build.
+- **SEE ignores pins.** Re-measured in bot4: **2 sign errors in 2,543 captures,
+  both conservative** — matching bot2's rate. Standard in every engine. Not worth
+  fixing. Do not re-derive this.
+- **First-move cutoff rate is now instrumented** (bot4: 90.6%). bot1 is not, so
+  there is no before-figure to compare against.
+- **Real-control (120 s+0.5 s) play still barely tested.** bot4's longest test
+  was 12 s.
+- **Pondering unused by every build.** See §8 P2 for the mechanism.
+- **Two of our games can run at once** (per the agent contract). Whether those
+  containers share a physical core is **unknown and decides whether pondering is
+  free or self-harming** — see §8 P2.
+
+---
+
+## 8. Next steps, prioritised
+
+### P0 — bot5: combine what has been proven
+
+**The two lines have now been separated cleanly and both halves work.** bot3
+proved the NNUE architecture and kernel; bot4 proved the search. bot5 is the
+marriage, and the sequencing matters because a bad net on bot4's search is worse
+than a bad net on bot1's.
+
+0. **Finish bot4's SPRT first (~100 more games).** bot4 is the ship candidate and
+   the *reference* every later build is measured against. Merging bot5 against an
+   unvalidated baseline compounds the uncertainty. `tools/h2h.py` resumes an
+   existing run, so this is pure grind.
+
+1. **Regenerate the data balanced.** Unchanged from the last iteration and still
+   the blocking item. Seed from near-level positions, not random plies. Drop
+   temperature to ~3%, or sample from engine MultiPV top-k rather than uniform
+   random. Reject or stratify on \|material\| so the distribution over material
+   balance is roughly flat. Target ≥1M positions with ≥50% inside ±120 cp.
+   ~8–10 chunked generation runs; training after it is 4 minutes.
+   **`tools/gen_openings.py` now provides the near-level seed set for free** —
+   this was blocked on the missing `gen_book.py` and is not blocked any more.
+
+2. **Gate on `v3_evalcmp --from-openings --max-imbalance 120`, not on val loss.**
+   Val loss was 0.00526 for the blind net and 0.00537 for the one with positional
+   signal — it moved the **wrong way** across the fix that demonstrably added the
+   missing signal. It cannot see this class of failure. Require **r > 0.40** on
+   quiet level positions (bot1 is 0.336) before playing a single game. This is
+   now a *hard* gate, not a preference: see the note at the end of §4 on why
+   bot4's search amplifies evaluation error.
+
+3. **Build bot5 as bot4's search with bot3's kernel.** Take bot4 whole and
+   replace `evaluate()`. Carry across from bot3: the int16 kernel, QA=1024 /
+   QB=2048, the material skip connection, the two-perspective encoding, and the
+   `_load_network` fallback to piece-square tables so a bad weights file is a
+   weaker game rather than a lost one. Specific interactions to get right:
+   - **Keep hand-set `_SEE_VALUES`.** SEE is a material swap-off, not an
+     evaluation; it must not consult the net. This is correct and standard.
+   - **Keep bot4's static-eval caching.** bot4 evaluates once per node into
+     `_stack_eval[ply]` and stores it in the TT entry. With a 3.2 us kernel this
+     matters less than with a 12.5 us one, but the improving flag and every
+     pruning margin depend on it being the *same* number throughout the node.
+   - **Port bot4's `_mating_drive`, not bot3's.** bot4's adds minor-piece
+     attraction and is what fixed K+2B. Keep bot3's cheaper `_phase_of` gating.
+   - **Port bot4's 300-ply adjudication blend as-is.** It is eval-agnostic.
+   - **Re-audit #5 is unnecessary** (two-perspective nets are structurally
+     immune) but **#9 and #10 must be re-checked**, because the pruning code is
+     coming across intact and its margins will now be fed by a different number.
+   - Import budget: bot3 costs 14 s, bot4 costs 0.3 s, so bot5 lands ~14 s
+     against a 60 s budget. Fine, but no longer negligible.
+
+4. **Only then bot5 vs bot4, and only then SPRT.**
+
+### P1 — cheap, high information
+
+5. **Autopsy bot4's 6 losses.** New, and the highest information-per-minute item
+   on the list. Rebuild `autopsy.py`. Pruning is the prime suspect.
+6. **Test bot4 with the stability early-break disabled.** See §7. One constant,
+   possibly a free ply.
+7. **Understand the recapture regression.** One tactic broke when material became
+   a skip connection in bot3. Diagnose it; do not patch around it. A build that
+   fails the correctness gate is not a build. *(Carried over, still open.)*
+8. **Re-measure king safety at n≥100.** If both evals really are anti-correlated
+   there, it is the largest single gain identified so far and it argues for
+   oversampling king-danger positions in training. *(Carried over, still open,
+   and it is now the most promising eval-side idea for bot5's data mix.)*
+9. **Re-point `tools/ladder.py` at `tools/openings.py`** and re-run both builds
+   at **40 games per rung**, per the sample-size finding in §3.
+10. **Instrument first-move cutoff rate for bot1** so bot4's 90.6% has a
+    before-figure. `tools/kernelbench.py` does this for any build that exposes
+    the counters.
+11. **Validate bot4 at the real 120 s + 0.5 s control** before the lock.
+
+### P2 — real gains, moderate effort
+
+12. **Pondering — deferred deliberately, with a recorded mechanism.**
+    *How it would work.* There is no callback in the contract, so pondering means
+    spawning a daemon thread just before returning from `get_move`. This works
+    for a non-obvious reason: the main thread is blocked in `runner.py`'s
+    `for line in sys.stdin`, a blocking C read that **releases the GIL**, so the
+    ponder thread gets the whole core. The referee only deducts wall time around
+    the request/response pair, so everything between our reply and the next FEN
+    is off our clock. At 120 s + 0.5 s over ~40 moves this is close to a doubling
+    of total compute — realistically about one extra ply.
+    *Design.* Iterative-deepen the position **after our own move**, from the
+    opponent's side, into the shared TT. Alpha-beta naturally spends its effort
+    on their best replies, so whatever they play the table is warm — no reply
+    prediction needed, and a "wrong guess" degrades to slightly-warm ordering
+    rather than wasted time. No deadline (we cannot know when they move), only a
+    stop flag polled every 255 nodes, plus a depth cap (~24) and a ~20 s
+    self-terminating wall-clock deadline. Skip entirely when the position is
+    resolved (mate in hand, dead-drawn ending).
+    *There is nothing to "trim" after the opponent moves.* Alpha-beta keeps no
+    persistent tree — the recursion unwinds and the tree is gone. What survives is
+    the TT, which is position-keyed, so entries for lines they did not play are
+    simply never probed again. They cost memory, not compute. Walking the table
+    to delete them would cost strictly more than leaving them, and bot4's
+    depth-preferred two-tier ageing already evicts stale entries first.
+    *The risk.* A ponder thread still alive when our own search starts means two
+    CPU-bound Python threads fighting the GIL — roughly halving our thinking time,
+    presenting as "the engine got weaker", not as a bug. Guards: stop-then-
+    `join(timeout)` as the **first** statement in `get_move`; a kill switch
+    disabling ponder for the rest of the game if a join ever times out; the thread
+    working on its own board copy and its own killer/history arrays, touching only
+    the TT and never `_board` or `_history_keys`.
+    *Three conditions before it ships.* (a) nps canary clean — run self-play with
+    ponder on both sides and confirm our own search nps matches the ponder-off
+    build, which tests the join directly on one core; (b) bench bot-at-1.5×-base
+    vs bot-at-1.0× to price extra thinking time — if 1.5× is worth under ~15 Elo,
+    pondering is not worth the threading code; (c) time to validate at
+    120 s + 0.5 s before the lock. Flag off for **every** measured number.
+    **Open question for hello@aichessathon.com: do the two concurrent games of a
+    team share a physical core?** If they do, our own two games ponder against
+    each other and both halve. This single fact decides whether pondering is free
+    or self-harming and costs one email.
+13. **Eval tuning** — only with SPRT in place. *(Carried over.)*
+14. **Harvest the curated opening positions from finished ladder games.** The
+    agent contract confirms finished games reveal the positions they started
+    from. This beats `gen_openings.py`'s synthetic set for both benching and for
+    seeding balanced NNUE training data.
+
+### P3 — high ceiling, high risk, decide with data not vibes
+
+15. **numba bitboard movegen.** The 33–36 us generation cost is the ceiling. With
+    the net, eval is 8% of node cost and movegen is most of the rest. **bot4
+    changes the arithmetic in its favour**: bot4 already reaches bot1's depth on
+    5.5× fewer nodes, so a movegen speedup now multiplies a much more efficient
+    search. Must be a parallel branch validated by perft. Multi-day, and probably
+    out of reach before the 11 Sept lock.
+16. **Bigger net.** Hidden stays 256 until the data is fixed — 926k positions
+    against 197k params is 4.7 samples/param and 512 would halve that. The speed
+    budget is there (512 would still be under bot1's 12.5 us), so this is a data
+    question, not a speed one. *(Carried over.)*
+
+### Competition timing (does not change with iteration)
+
+- Uploads close **11 Sept 11:00**. Tie-break favours the **earlier** final
+  submission, so submit early, not at 10:59.
+- 6 uploads per team per day. The latest that passed validation is the one that
+  plays, so a regression that validates *does* go live.
+- Ladder Elo does not qualify anyone. The Swiss over locked builds decides.
+  Treat the ladder as a free live test harness.
+- **bot4 is the build to put on the ladder now.** It passes the correctness gate
+  cleanly and beat the previous best 73.3% over 30 games with zero failures.
+  Waiting for a completed SPRT before uploading wastes live test games.
+
+---
+
+## 9. Principles that keep proving right
+
+- **Nothing merges without SPRT.** A 60% score over 15 games is noise. And
+  budget ~130 games for it: a large effect does not terminate the test early.
+- **Profile before architecting.** The 33 us/1 us ratio killed a day of planned
+  Zobrist work before it started. The 3.2 us/12.5 us ratio killed the assumption
+  that a learned eval costs speed. The 268-bytes-per-entry measurement resized
+  the TT.
+- **Nodes to depth, not nodes per second.** bot4 halved its node rate and still
+  searched deeper than bot1 on a fifth of the nodes. A speed metric alone scored
+  the best build we have as a regression. *(New.)*
+- **A high cutoff rate does not mean a correct search.** bot4 reported 90.6%
+  first-move cutoffs while missing a forced mate. Ordering metrics measure
+  ordering; only positions with a known answer measure correctness. *(New.)*
+- **Pruning that returns before generating moves cannot be guarded at the move
+  level.** Razoring, RFP and null move return early; every one of them is a place
+  where a margin can silently overrule a forced sequence. Prefer prunes that skip
+  a *move* over prunes that return a *score*. *(New.)*
+- **Correlation, not error.** A search evaluation is a ranking function.
+  Alpha-beta cares only about ordering. bot1's slope of 1.60 means it
+  over-reports by 60% and it does not matter; bot3_nnue's better mae with worse
+  correlation lost 280 Elo.
+- **Measure on the distribution you will play.** A metric averaged over the wrong
+  distribution is worse than no metric, because it reads as success.
+- **Give the model what you already know.** Material as a fixed skip connection
+  costs nothing and forces the capacity onto what is actually unknown.
+- **A loss curve cannot see a distribution fault.** Validation loss moved the
+  wrong way across the change that added the missing signal.
+- **Keep a terrible opponent around.** It turns invisible bugs into impossible
+  scores.
+- **Test adversarially, at the boundaries.** The severe bugs only appeared under
+  time pressure, at 50 ms budgets, and in forced mates — never in normal play.
+- **Report the sample size next to the result, always.** "60%" and "60% ±184 Elo
+  over 15 games" are different claims. A crossover from a 6-game rung moves by 3×
+  on a re-run. *(Extended.)*
+- **Fix the reference build before measuring against it.** bot1's colour bias
+  belonged to both engines; patching it into `bot1fix` first meant bot4 was not
+  credited for a fix it did not make. *(New.)*
+- **Goodhart.** Never optimise Stockfish move-match rate or raw centipawn loss.
+  Use Stockfish as an opponent, a labeller and an autopsy tool, not as a target.
