@@ -62,7 +62,7 @@ except ImportError:  # fall back to the twelve that ship with bench.py
 # SPRT parameters. elo1=5 asks "is this at least five Elo better", which is the
 # smallest difference worth a merge and still reachable in a few hundred games.
 ELO0 = 0.0
-ELO1 = 5.0
+ELO1 = 5.0   # overridden by --elo1; see the note in main()
 ALPHA = 0.05
 BETA = 0.05
 LOWER_BOUND = math.log(BETA / (1.0 - ALPHA))
@@ -219,6 +219,7 @@ def report_state(state: dict[str, Any]) -> int:
             f"  elo   {elo:+.0f}  (95% interval "
             f"{elo_difference(low):+.0f} to {elo_difference(high):+.0f})"
         )
+    print(f"  test  elo0={ELO0:g} elo1={ELO1:g}, alpha=beta={ALPHA:g}")
     print(f"  LLR   {llr:+.2f}  (accept above {UPPER_BOUND:+.2f}, reject below {LOWER_BOUND:+.2f})")
     if llr >= UPPER_BOUND:
         print("  SPRT: PASS. The change is at least five Elo better; merge is justified.")
@@ -346,6 +347,8 @@ def supervise(arguments: argparse.Namespace) -> int:
             "--shard", str(shard),
             "--shards", str(workers),
             "--deadline-s", str(arguments.deadline_s),
+            "--elo0", str(arguments.elo0),
+            "--elo1", str(arguments.elo1),
         ]
         processes.append(subprocess.Popen(command))
 
@@ -382,9 +385,10 @@ def supervise(arguments: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    global ELO0, ELO1
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--agent", type=Path, default=Path("versions/bot4"))
-    parser.add_argument("--opponent", type=Path, default=Path("baselines/bot1fix"))
+    parser.add_argument("--agent", type=Path, default=Path("versions/bot4_ordering"))
+    parser.add_argument("--opponent", type=Path, default=Path("versions/bot1_baseline"))
     parser.add_argument("--games", type=int, default=8, help="games to add, across all workers")
     parser.add_argument("--base-ms", type=int, default=8_000)
     parser.add_argument("--increment-ms", type=int, default=500)
@@ -402,7 +406,19 @@ def main() -> int:
         help="stop starting games after this many seconds. 0 means no limit. "
              "Sandbox runs want ~250 because bash calls are killed at ~5 min",
     )
+    parser.add_argument(
+        "--elo0", type=float, default=ELO0,
+        help="null hypothesis in Elo. Default 0: 'no better than the opponent'",
+    )
+    parser.add_argument(
+        "--elo1", type=float, default=ELO1,
+        help="alternative hypothesis in Elo. Default 5, which is a Fishtest "
+             "setting for banking tiny gains over months and needs ~300 games "
+             "even for a large effect. --elo1 20 decides the same result in ~90 "
+             "games but will reject a genuine +10 Elo change. Pick deliberately",
+    )
     arguments = parser.parse_args()
+    ELO0, ELO1 = arguments.elo0, arguments.elo1
 
     if arguments.report:
         return report_state(pool(arguments.out, max(arguments.workers, 1)))

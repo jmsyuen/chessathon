@@ -1,6 +1,32 @@
-.venv/
+# Generated agent directories — rebuild with `make agents`, never commit
+versions/
+baselines/
+
+# Data and checkpoints. Large, regenerable, and not the record of anything.
+data/
+*.csv
+state.npz
+*.pt
+*.pth
+
+# Submission artifacts
+submission.zip
+
+# NEVER commit an engine binary. Everything that ships is checked, retroactively,
+# and the penalty is disqualification. Keep Stockfish on PATH, outside the repo.
+stockfish
+*.exe
+sfroot/
+
+# Python
 __pycache__/
+*.py[cod]
+.venv/
 .mypy_cache/
 .ruff_cache/
-submission.zip
+
+# Results: keep the JSON and the digest, drop scratch
+results/*.tmp
 *.pgn
+!weights/
+!bots/**/*.npz

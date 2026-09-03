@@ -4,7 +4,7 @@
 
 - **File:** `bot<N>_<style>.py`, `<N>` increments per family
 - **Reference build:** `bot4_ordering` — the strongest measured build. Every
-  strength claim is against bot4, not bot1 and never a weak baseline
+  strength claim is against bot4, not bot1 and never a weak baseline. also possibly measure against the stockfish ladder, what are your thoughts?
 - **Idea:** read `v4_ITERATION_LOG.md` §8 and propose the next step from it
 - **Carry over:** stated per iteration in §8. For bot5: bot4's search whole,
   bot3's int16 kernel, `_budget` / `_sync` / `get_move` wrapper unchanged
