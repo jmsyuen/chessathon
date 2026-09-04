@@ -57,6 +57,7 @@ BASELINE_NAMES: dict[str, str] = {
 # stored under. Keyed by build name.
 WEIGHT_TARGETS: dict[str, str] = {
     "bot3_nnue": "weights/nnue.npz",
+    "bot5_nnue2": "weights/nnue.npz",
 }
 
 WEIGHT_SUFFIXES = (".npz", ".onnx", ".safetensors", ".pt")

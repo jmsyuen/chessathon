@@ -111,6 +111,12 @@ def _reset() -> None:
     agent._board = None
     agent._history_keys = []
     agent._tt.clear()
+    # bot4 and later run two transposition tiers and age by swapping them, so
+    # clearing the live one alone leaves the old one holding the previous case's
+    # search. That is state leaking between checks that are meant to be isolated.
+    old_tier = getattr(agent, "_tt_old", None)
+    if old_tier is not None:
+        old_tier.clear()
 
 
 def _check_legal(fen: str, uci: str) -> bool:
