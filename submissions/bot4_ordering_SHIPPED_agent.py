@@ -1,58 +1,49 @@
-"""AI Chessathon submission entrypoint — bot5, learned evaluation on bot4's search.
+"""AI Chessathon submission entrypoint — bot4, ordering and pruning.
 
-bot4's search, unchanged, with the piece-square evaluation replaced by the int16
-network bot3 proved out. The two halves were built and measured separately on
-purpose: bot3 established that a jitted forward pass costs 3.2 us against 12.5 us
-for the Python evaluation, and bot4 established a search that reaches bot1's
-depth on a fifth of the nodes. Nothing here is new except the join.
+Same evaluation as bot1_baseline, deliberately: this iteration attacks the
+effective branching factor and nothing else, so that a bench result reads as
+"search quality" rather than as the sum of two unrelated changes. The only
+evaluation edits are two fixes that belong to any build (a colour bias from
+floor division, and a K+2B ending that would not convert).
 
-What is new against bot4:
-    * evaluation is (768 -> H) x 2 perspectives, squared clipped ReLU, one output
-      neuron, int16 weights, evaluated in a numba kernel. H is read from the
-      weights file, so 256 and 512 are the same shipped source
-    * material is a fixed skip connection computed inside the kernel, which
-      already walks every piece, so the network only ever learns the positional
-      residual. Without this it learns to count material and is blind in level
-      positions, which cost bot3 280 Elo
-    * the network is calibrated to the hand-crafted evaluation's scale by one
-      integer factor stored in the weights file. bot4's pruning margins are all
-      expressed in units of that evaluation, so a network on a different scale
-      silently retunes every one of them
-    * NET_WEIGHT blends the two evaluations. 0 is bot4 exactly and is the control
-      arm; 256 is the network alone; anything between is a blend
-
-A missing or malformed weights file leaves _forward as None and the whole file
-falls back to bot4's evaluation, so the worst case is that this plays as bot4
-rather than that it plays badly. That is the reason the classical evaluation is
-kept here in full rather than trimmed to a stub.
+What is new against bot1:
+    * static exchange evaluation, used to split winning from losing captures,
+      to prune in quiescence, and to prune shallow captures in the main search
+    * countermove and 1-ply continuation history alongside butterfly history,
+      with gravity and a malus for quiets that failed to cut off
+    * staged move generation: the transposition move is tried before
+      list(board.legal_moves) is ever called, which at 33 us a generation is the
+      single largest saving available
+    * internal iterative reduction, reverse futility, razoring, late move
+      pruning, SEE pruning, and a log-table late move reduction
+    * progressive aspiration widening and a two-tier transposition table that
+      ages out instead of clearing mid-search
+    * instrumentation for first-move cutoff rate and TT hit rate, which the
+      iteration log records as never having been measured
 
 The design priority, in order, is still: never crash, never flag, never play an
 illegal move, then play well.
 
 Layout of this file:
     1. Constants and tunables
-    2. The network
-    3. Evaluation tables, built at import
-    4. Evaluation
-    5. Static exchange evaluation
-    6. Move ordering
-    7. Search
-    8. Time management
-    9. Game-state tracking (repetition history from FEN alone)
-    10. get_move
+    2. Evaluation tables, built at import
+    3. Evaluation
+    4. Static exchange evaluation
+    5. Move ordering
+    6. Search
+    7. Time management
+    8. Game-state tracking (repetition history from FEN alone)
+    9. get_move
 """
 
 from __future__ import annotations
 
 import contextlib
 import math
-import os
 import time
-from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 import chess
-import numpy as np
 
 # --------------------------------------------------------------------------
 # 1. Constants and tunables
@@ -118,217 +109,8 @@ ADJUDICATION_WEIGHT: Final = 0.6  # never all the way; positional play still mat
 _HISTORY_MAX: Final = 16_384
 _CONT_SLOTS: Final = 384  # (piece type - 1) * 64 + square
 
-# How much of the evaluation comes from the network, out of 256. 0 reproduces
-# bot4 exactly and is the control arm of the A/B; 256 is the network alone.
-# A blend is not a hedge for its own sake: two evaluators whose errors are
-# imperfectly correlated average to something better than either, which is worth
-# having when the network has been trained once on one data set.
-NET_WEIGHT: int = 128
-
-# Keeps a learned score clear of the mate range, so a broken network can never
-# be mistaken for a forced win.
-EVAL_CLAMP: Final = 12_000
-
-WEIGHTS_PATH: Path = Path(__file__).resolve().parent / "weights" / "nnue.npz"
-
-# Fallback quantisation constants, used only when the weights file predates the
-# fields. Every current file carries its own.
-_QA_DEFAULT: Final = 1024  # accumulator and activation scale
-_QB_DEFAULT: Final = 2048  # output weight scale
-_SCALE_DEFAULT: Final = 400  # network units to centipawns
-_CP_SCALE_ONE: Final = 1024  # fixed-point 1.0 for the calibration factor
-
 # --------------------------------------------------------------------------
-# Experiment knobs. The competition container sets none of these, so the shipped
-# behaviour is exactly the constants above. They exist because measurement now
-# happens on a different machine after this file is frozen, and editing source
-# between arms of an A/B is how two arms stop being the same build.
-# --------------------------------------------------------------------------
-
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.environ[name])
-    except (KeyError, ValueError):
-        return default
-
-
-NET_WEIGHT = max(0, min(256, _env_int("CHESSATHON_NET_WEIGHT", NET_WEIGHT)))
-
-# A node cap for internal A/B testing. A black-box get_move cannot be driven at
-# fixed nodes from outside, but two arms of *this* build can be compared without
-# time noise, which is the one case the iteration log allows fixed nodes for.
-# Zero means off, which is always the case in a rated game.
-NODE_LIMIT: Final = max(0, _env_int("CHESSATHON_FIXED_NODES", 0))
-
-with contextlib.suppress(KeyError):
-    WEIGHTS_PATH = Path(os.environ["CHESSATHON_WEIGHTS"]).expanduser()
-
-# --------------------------------------------------------------------------
-# 2. The network
-# --------------------------------------------------------------------------
-
-# Feature index for one piece, from one perspective:
-#     (0 if the piece belongs to that perspective else 1) * 384
-#     + (piece type - 1) * 64
-#     + square, mirrored vertically when the perspective is Black
-# 2 * 6 * 64 = 768 inputs. tools/train.py builds indices the same way and
-# tools/selftest.py checks that the two agree. A silent mismatch here looks
-# exactly like a badly trained network, so it is never assumed.
-
-_DEBRUIJN: Final = np.uint64(0x03F79D71B4CB0A89)
-_LSB_INDEX = np.zeros(64, dtype=np.int64)
-for _bit in range(64):
-    # Plain Python ints: numpy would warn about the deliberate uint64 wrap.
-    _LSB_INDEX[((1 << _bit) * 0x03F79D71B4CB0A89 & 0xFFFFFFFFFFFFFFFF) >> 58] = _bit
-
-_NET_W0: np.ndarray | None = None
-_NET_B0: np.ndarray | None = None
-_NET_W1: np.ndarray | None = None
-_NET_B1: int = 0
-_HIDDEN: int = 0
-_CP_SCALE: int = _CP_SCALE_ONE
-_forward: Any = None  # set below only if the weights load and the jit compile succeed
-
-_BITBOARDS = np.zeros(8, dtype=np.uint64)
-
-
-def _build_forward(qa: int, qb: int, scale: int):  # type: ignore[no-untyped-def]
-    """Compile the forward pass. Kept in a function so a failure is containable.
-
-    numba is the only speed path in this image: no compiler, so no Cython, and
-    native binaries are rejected. Compilation is eager and happens at import,
-    inside the 60 second init budget rather than on the clock. cache=False is
-    mandatory because the platform filesystem is read-only beside the source.
-    """
-    from numba import njit
-
-    lsb_index = _LSB_INDEX
-    debruijn = _DEBRUIJN
-    values = np.asarray(PIECE_MG[1:], dtype=np.int64)
-
-    @njit(
-        "int64(uint64[::1], int64, int16[:, ::1], int16[::1], int16[::1], int64)",
-        cache=False,
-        nogil=True,
-    )
-    def forward(
-        boards: np.ndarray,
-        side_to_move: int,
-        w0: np.ndarray,
-        b0: np.ndarray,
-        w1: np.ndarray,
-        b1: int,
-    ) -> np.int64:
-        hidden = w0.shape[1]
-        accumulator_us = np.empty(hidden, dtype=np.int32)
-        accumulator_them = np.empty(hidden, dtype=np.int32)
-        for i in range(hidden):
-            accumulator_us[i] = b0[i]
-            accumulator_them[i] = b0[i]
-
-        material = np.int64(0)
-        black = boards[6]
-        white = boards[7]
-        for piece_type in range(6):
-            for color in range(2):
-                bits = boards[piece_type] & (white if color == 1 else black)
-                while bits:
-                    low = bits & (~bits + np.uint64(1))
-                    square = lsb_index[(low * debruijn) >> np.uint64(58)]
-                    bits &= bits - np.uint64(1)
-                    same = 0 if color == side_to_move else 1
-                    material += -values[piece_type] if same else values[piece_type]
-                    if side_to_move == 1:
-                        square_us = square
-                        square_them = square ^ 56
-                    else:
-                        square_us = square ^ 56
-                        square_them = square
-                    row_us = same * 384 + piece_type * 64 + square_us
-                    row_them = (1 - same) * 384 + piece_type * 64 + square_them
-                    for i in range(hidden):
-                        accumulator_us[i] += w0[row_us, i]
-                        accumulator_them[i] += w0[row_them, i]
-
-        # Squared clipped ReLU, then a single output neuron. The squaring is what
-        # lets one hidden layer express interactions between pieces.
-        total = np.int64(0)
-        for i in range(hidden):
-            value = accumulator_us[i]
-            if value < 0:
-                value = 0
-            elif value > qa:
-                value = qa
-            total += np.int64(value) * np.int64(value) * np.int64(w1[i])
-        for i in range(hidden):
-            value = accumulator_them[i]
-            if value < 0:
-                value = 0
-            elif value > qa:
-                value = qa
-            total += np.int64(value) * np.int64(value) * np.int64(w1[hidden + i])
-        # Material is a fixed skip connection: the network only ever learned the
-        # positional residual, so it has to be added back here.
-        return (total // qa + b1) * scale // (qa * qb) + material
-
-    return forward
-
-
-def _pack(board: chess.Board, out: np.ndarray) -> np.ndarray:
-    """Hand the kernel the eight bitboards it needs. Measured at ~0.5 us."""
-    out[0] = board.pawns
-    out[1] = board.knights
-    out[2] = board.bishops
-    out[3] = board.rooks
-    out[4] = board.queens
-    out[5] = board.kings
-    out[6] = board.occupied_co[chess.BLACK]
-    out[7] = board.occupied_co[chess.WHITE]
-    return out
-
-
-def _load_network() -> bool:
-    """Load and compile. Returns whether the network is usable.
-
-    Every failure path returns False rather than raising, because the caller's
-    fallback is the hand-crafted evaluation and a weaker game beats a lost one.
-    """
-    global _NET_W0, _NET_B0, _NET_W1, _NET_B1, _HIDDEN, _CP_SCALE, _forward
-    try:
-        with np.load(WEIGHTS_PATH) as blob:
-            w0 = np.ascontiguousarray(blob["w0"], dtype=np.int16)
-            b0 = np.ascontiguousarray(blob["b0"], dtype=np.int16)
-            w1 = np.ascontiguousarray(blob["w1"], dtype=np.int16)
-            b1 = int(blob["b1"])
-            hidden = int(blob["hidden"])
-            qa = int(blob["qa"]) if "qa" in blob else _QA_DEFAULT
-            qb = int(blob["qb"]) if "qb" in blob else _QB_DEFAULT
-            scale = int(blob["scale"]) if "scale" in blob else _SCALE_DEFAULT
-            # Written by tools/calibrate.py. Absent on files trained before the
-            # calibration step existed, in which case no rescale is applied.
-            cp_scale = int(blob["cp_scale"]) if "cp_scale" in blob else _CP_SCALE_ONE
-        if w0.shape != (768, hidden) or b0.shape != (hidden,) or w1.shape != (2 * hidden,):
-            return False
-        if hidden <= 0 or qa <= 0 or qb <= 0 or scale <= 0 or not 0 < cp_scale < 1 << 16:
-            return False
-        forward = _build_forward(qa, qb, scale)
-        # Compile and sanity-check on the starting position before trusting it.
-        # A scale error does not crash, it just makes the search thrash, so the
-        # only way to catch one is to look at a number we already know.
-        score = forward(_pack(chess.Board(), _BITBOARDS), 1, w0, b0, w1, b1)
-        if not -EVAL_CLAMP < score < EVAL_CLAMP:
-            return False
-    except Exception:
-        return False
-    _NET_W0, _NET_B0, _NET_W1, _NET_B1, _HIDDEN = w0, b0, w1, b1, hidden
-    _CP_SCALE = cp_scale
-    _forward = forward
-    return True
-
-
-# --------------------------------------------------------------------------
-# 3. Evaluation tables
+# 2. Evaluation tables
 # --------------------------------------------------------------------------
 
 # Piece values in centipawns, midgame and endgame. Textbook values: pawns and
@@ -561,7 +343,7 @@ _LMR: Final = tuple(
 
 
 # --------------------------------------------------------------------------
-# 4. Evaluation
+# 3. Evaluation
 # --------------------------------------------------------------------------
 
 _pawn_cache: dict[tuple[int, int], tuple[int, int]] = {}
@@ -683,15 +465,8 @@ def _referee_material(board: chess.Board) -> int:
     return total
 
 
-def _classical(board: chess.Board) -> int:
-    """bot4's evaluation, verbatim, in centipawns from the side to move.
-
-    Kept whole rather than trimmed to a stub for two reasons. It is the fallback
-    when the weights file is missing or malformed, which turns a broken upload
-    into a weaker game instead of a lost one. And it is the control arm: at
-    NET_WEIGHT 0 this file has to be bot4 exactly, or the A/B is measuring two
-    changes at once.
-    """
+def evaluate(board: chess.Board) -> int:
+    """Static evaluation in centipawns, from the perspective of the side to move."""
     midgame = 0
     endgame = 0
     phase = 0
@@ -760,101 +535,11 @@ def _classical(board: chess.Board) -> int:
 
     if board.turn != chess.WHITE:
         score = -score
-    return score
-
-
-def _phase_of(board: chess.Board) -> int:
-    """Game phase in the same units as the tapered evaluation, in four popcounts.
-
-    The classical evaluation gets phase for free because it already walks every
-    piece. The network does not walk anything in Python, so this exists to gate
-    the mating drive without paying for a walk that nothing else needs.
-    """
-    return (
-        chess.popcount(board.knights)
-        + chess.popcount(board.bishops)
-        + 2 * chess.popcount(board.rooks)
-        + 4 * chess.popcount(board.queens)
-    )
-
-
-def _net_evaluate(board: chess.Board) -> int:
-    """The learned evaluation, in centipawns from the side to move.
-
-    The network was trained on quiet positions and has never had to prove it can
-    mate with K+R, so the mating drive is bolted on exactly as the classical path
-    applies it — added to the endgame side and weighted by how far into the
-    endgame we are. Without it a won ending gets shuffled until the referee
-    claims a fifty-move draw against us, which is a lost half point and not a
-    slow win.
-    """
-    raw = int(
-        _forward(_pack(board, _BITBOARDS), int(board.turn), _NET_W0, _NET_B0, _NET_W1, _NET_B1)
-    )
-    # Calibration to the hand-crafted scale. bot4's pruning margins are all
-    # expressed in units of that evaluation, so a network reporting on a
-    # different scale would silently retune RFP, futility, LMP and the null-move
-    # reduction all at once. Truncate toward zero, never floor: flooring is
-    # regression bug #5 and it costs a centipawn of colour bias.
-    scaled = raw * _CP_SCALE
-    score = scaled // _CP_SCALE_ONE if scaled >= 0 else -(-scaled // _CP_SCALE_ONE)
-    if score > EVAL_CLAMP:
-        score = EVAL_CLAMP
-    elif score < -EVAL_CLAMP:
-        score = -EVAL_CLAMP
-
-    phase = _phase_of(board)
-    if phase <= _MATE_DRIVE_PHASE:
-        white_pawns = board.pawns & board.occupied_co[chess.WHITE]
-        black_pawns = board.pawns & board.occupied_co[chess.BLACK]
-        material = [0, 0]
-        for color_index in (0, 1):
-            color = bool(color_index)
-            for piece_type in range(1, 7):
-                material[color_index] += PIECE_EG[piece_type] * chess.popcount(
-                    board.pieces_mask(piece_type, color)
-                )
-        if _mating_drive(board, phase, material, white_pawns, black_pawns):
-            # Bare-king conversion is handed to the hand-crafted evaluation, and
-            # this is not a hedge, it is the one place the network is known to be
-            # wrong. Data generation truncates a game once one side is 600 cp
-            # down, so the training set contains almost no position in which
-            # somebody is converting a won ending. Every king on a1 the network
-            # ever saw was a castled king that was safe there, and it generalised
-            # accordingly: measured on K+R+B vs K, its opinion of driving the weak
-            # king from the centre to the corner is -67 centipawns, against the
-            # mating drive's +31 and the hand-crafted evaluation's +103. The
-            # network overwhelms the drive two to one and the ending is never won.
-            # Cost of handing it over: nothing measurable. This fires only when
-            # the drive fires, which needs an emptied board, a rook or more of
-            # material, and no pawns for the losing side.
-            return _classical(board)
-
-    if _adjudication_blend:
-        pure = _referee_material(board)
-        if board.turn != chess.WHITE:
-            pure = -pure
-        score = int(score * (1.0 - _adjudication_blend) + pure * _adjudication_blend)
-    return score
-
-
-def evaluate(board: chess.Board) -> int:
-    """Static evaluation in centipawns, from the perspective of the side to move.
-
-    Called once per node and cached in _stack_eval[ply]; every pruning margin in
-    the search depends on it being the same number throughout a node.
-    """
-    if _forward is None or NET_WEIGHT == 0:
-        return _classical(board) + TEMPO
-    if NET_WEIGHT == 256:
-        return _net_evaluate(board) + TEMPO
-    total = NET_WEIGHT * _net_evaluate(board) + (256 - NET_WEIGHT) * _classical(board)
-    score = total // 256 if total >= 0 else -(-total // 256)
     return score + TEMPO
 
 
 # --------------------------------------------------------------------------
-# 5. Static exchange evaluation
+# 4. Static exchange evaluation
 # --------------------------------------------------------------------------
 
 # The king is priced far above a queen so that a sequence is never credited with
@@ -953,7 +638,7 @@ def _see(board: chess.Board, move: chess.Move) -> int:
 
 
 # --------------------------------------------------------------------------
-# 6. Move ordering
+# 5. Move ordering
 # --------------------------------------------------------------------------
 
 # Alpha-beta only pays for itself when good moves come first, so after time
@@ -1097,7 +782,7 @@ def _quiescence_moves(board: chess.Board, in_check: bool, ply: int) -> list[ches
 
 
 # --------------------------------------------------------------------------
-# 7. Search
+# 6. Search
 # --------------------------------------------------------------------------
 
 
@@ -1194,9 +879,7 @@ def _quiescence(board: chess.Board, alpha: int, beta: int, ply: int) -> int:
         _qnodes += 1
         if ply > _seldepth:
             _seldepth = ply
-    if not _nodes & 255 and (
-        time.monotonic() >= _deadline or (NODE_LIMIT and _nodes >= NODE_LIMIT)
-    ):
+    if not _nodes & 255 and time.monotonic() >= _deadline:
         raise _Timeout
 
     in_check = board.is_check()
@@ -1258,9 +941,7 @@ def _negamax(
     _nodes += 1
     if STATS and ply > _seldepth:
         _seldepth = ply
-    if not _nodes & 255 and (
-        time.monotonic() >= _deadline or (NODE_LIMIT and _nodes >= NODE_LIMIT)
-    ):
+    if not _nodes & 255 and time.monotonic() >= _deadline:
         raise _Timeout
 
     is_pv = beta > alpha + 1
@@ -1409,7 +1090,7 @@ def _negamax(
                     break
                 expanded = True
                 rest = list(board.legal_moves)
-                if moves and tt_move is not None:
+                if moves:
                     rest.remove(tt_move)  # already searched as stage one
                 legal_count = len(moves) + len(rest)
                 if legal_count == 0:
@@ -1563,7 +1244,7 @@ def _search_root(
 
 
 # --------------------------------------------------------------------------
-# 8. Time management
+# 7. Time management
 # --------------------------------------------------------------------------
 
 # Carried over from bot1 unchanged. It is the one part of that engine with a
@@ -1605,7 +1286,7 @@ STABLE_SCORE_DRIFT: Final = 20
 
 
 # --------------------------------------------------------------------------
-# 9. Game-state tracking
+# 8. Game-state tracking
 # --------------------------------------------------------------------------
 
 # Carried over from bot1 unchanged. We are handed a FEN and nothing else, but the
@@ -1648,7 +1329,7 @@ def _record(move: chess.Move) -> None:
 
 
 # --------------------------------------------------------------------------
-# 10. get_move
+# 9. get_move
 # --------------------------------------------------------------------------
 
 
@@ -1674,10 +1355,6 @@ def _think(fen: str, time_left_ms: int) -> str:
 
     plies_played = len(_history_keys)
     soft_ms, hard_ms = _budget(time_left_ms, plies_played)
-    if NODE_LIMIT:
-        # Internal A/B only. Hand the search an hour so the node cap is what
-        # stops it, leaving the evaluation as the single difference between arms.
-        soft_ms = hard_ms = 3_600_000.0
     if len(legal) == 1 or hard_ms <= 0:
         _record(legal[0])
         return legal[0].uci()
@@ -1825,27 +1502,13 @@ def get_move(fen: str, time_left_ms: int) -> str:
 
 
 def _warmup() -> None:
-    """Load the network, then run a short search, both at import.
+    """Run a short search at import so the first real move is not the cold one.
 
     Import happens inside a 60 second budget before the clock starts, so this is
-    free. It also means a broken build fails during validation rather than on
-    move one of a rated game. The numba import alone is about 14 seconds of that
-    budget, which is fine but is no longer negligible.
-
-    The search runs after the load so the jitted kernel is called with the exact
-    argument types the real calls use. A first call on the clock would pay for
-    compilation there instead.
+    free. It also means a broken build fails during validation rather than on move
+    one of a rated game.
     """
     global _board, _history_keys, _adjudication_blend
-    loaded = _load_network()
-    if not loaded:
-        # Printing is safe: the runner points fd 1 at stderr before importing,
-        # and the validation log echoes it back. A silent fallback to the
-        # hand-crafted evaluation is exactly the failure worth seeing early,
-        # because it plays like bot4 rather than like a fault.
-        print(f"bot5: no usable network at {WEIGHTS_PATH}, using the classical evaluation")
-    elif DEBUG:
-        print(f"bot5: network hidden {_HIDDEN}, cp_scale {_CP_SCALE}, weight {NET_WEIGHT}/256")
     with contextlib.suppress(Exception):
         get_move(chess.STARTING_FEN, 3_000)
     _board = None
