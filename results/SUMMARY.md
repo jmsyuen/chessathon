@@ -1,7 +1,7 @@
-# Results — 2026-09-04 09:45 UTC
+# Results — 2026-09-04 17:24 UTC
 
 - machine: yinmint (12 cores, x86_64, Linux)
-- commit: `6a3e788` on `main` (uncommitted changes present)
+- commit: `bc9720c` on `main` (uncommitted changes present)
 
 ## Failure gate
 
@@ -9,8 +9,12 @@
 |---|---|---|---|
 | bot4_ordering_vs_bot1_baseline | 198 | 0 | clean |
 | bot5_nnue2_w128_vs_bot4_ordering | 59 | 0 | clean |
-| bot5_nnue2_w256_vs_bot4_ordering | 300 | 0 | clean |
+| bot5_nnue2_w256_vs_bot4_ordering | 427 | 0 | clean |
 | nobreak_vs_bot4_ordering | 300 | 0 | clean |
+| sweep_nobreak | 156 | 0 | clean |
+| sweep_w160 | 156 | 0 | clean |
+| sweep_w192 | 156 | 0 | clean |
+| sweep_w96 | 156 | 0 | clean |
 
 **Gate clean: zero failures across all runs.**
 
@@ -20,8 +24,12 @@
 |---|---|---|---|---|---|---|
 | bot4_ordering_vs_bot1_baseline | 8000ms+500ms | +118 =36 -44 | 68.7% | +136 (+92..+186) | +1.53 | undecided |
 | bot5_nnue2_w128_vs_bot4_ordering | 8000ms+500ms | +47 =7 -5 | 85.6% | +310 (+218..+460) | +1.50 | undecided |
-| bot5_nnue2_w256_vs_bot4_ordering | 8000ms+500ms | +165 =30 -105 | 60.0% | +70 (+33..+109) | +0.96 | undecided |
+| bot5_nnue2_w256_vs_bot4_ordering | 8000ms+500ms | +240 =42 -145 | 61.1% | +79 (+47..+111) | +1.55 | undecided |
 | nobreak_vs_bot4_ordering | 8000ms+500ms | +149 =64 -87 | 60.3% | +73 (+38..+109) | +1.15 | undecided |
+| sweep_nobreak | 8000ms+500ms | +69 =27 -60 | 52.9% | +20 (-30..+70) | +0.14 | undecided |
+| sweep_w160 | 8000ms+500ms | +54 =40 -62 | 47.4% | -18 (-66..+29) | -0.18 | undecided |
+| sweep_w192 | 8000ms+500ms | +47 =27 -82 | 38.8% | -79 (-132..-30) | -0.66 | undecided |
+| sweep_w96 | 8000ms+500ms | +63 =40 -53 | 53.2% | +22 (-25..+70) | +0.17 | undecided |
 
 Elo intervals are wide at small samples by nature. A verdict of *undecided* means exactly that — not 'probably fine'.
 
