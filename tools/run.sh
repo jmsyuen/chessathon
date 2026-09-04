@@ -162,7 +162,24 @@ stage_gates() {
   echo "passed: $(tr '\n' ' ' < results/passed.txt)"
 }
 
-best_hidden() { head -1 results/passed.txt; }
+# The best network, not the first one that passed. Both 256 and 512 cleared the
+# gate on 4 Sep and head -1 took 256, which was worse on every split.
+best_hidden() {
+  local best="" best_r="-1"
+  while read -r hidden; do
+    [ -n "$hidden" ] || continue
+    local r
+    r=$(sed -n 's/.*GATE PASS: quiet level r: [^ ]* \([0-9.]*\) against.*/\1/p' \
+        "results/evalcmp.$hidden.txt" 2>/dev/null | head -1)
+    [ -n "$r" ] || r=0
+    if [ "$(printf '%s\n%s\n' "$r" "$best_r" | sort -g | tail -1)" = "$r" ]; then
+      best="$hidden"; best_r="$r"
+    fi
+  done < results/passed.txt
+  [ -n "$best" ] || { echo "no passing network in results/passed.txt" >&2; exit 1; }
+  echo "  using hidden $best (quiet level r=$best_r)" >&2
+  echo "$best"
+}
 
 stage_correctness() {
   install_hidden "$(best_hidden)"

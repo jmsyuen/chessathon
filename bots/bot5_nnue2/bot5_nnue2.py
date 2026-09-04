@@ -814,12 +814,21 @@ def _net_evaluate(board: chess.Board) -> int:
                 material[color_index] += PIECE_EG[piece_type] * chess.popcount(
                     board.pieces_mask(piece_type, color)
                 )
-        drive = _mating_drive(board, phase, material, white_pawns, black_pawns)
-        if drive:
-            # The same endgame weighting the tapered path gives it, so the two
-            # arms of the blend converge on one behaviour rather than two.
-            drive = drive * (TOTAL_PHASE - phase) // TOTAL_PHASE
-            score += drive if board.turn == chess.WHITE else -drive
+        if _mating_drive(board, phase, material, white_pawns, black_pawns):
+            # Bare-king conversion is handed to the hand-crafted evaluation, and
+            # this is not a hedge, it is the one place the network is known to be
+            # wrong. Data generation truncates a game once one side is 600 cp
+            # down, so the training set contains almost no position in which
+            # somebody is converting a won ending. Every king on a1 the network
+            # ever saw was a castled king that was safe there, and it generalised
+            # accordingly: measured on K+R+B vs K, its opinion of driving the weak
+            # king from the centre to the corner is -67 centipawns, against the
+            # mating drive's +31 and the hand-crafted evaluation's +103. The
+            # network overwhelms the drive two to one and the ending is never won.
+            # Cost of handing it over: nothing measurable. This fires only when
+            # the drive fires, which needs an emptied board, a rook or more of
+            # material, and no pawns for the losing side.
+            return _classical(board)
 
     if _adjudication_blend:
         pure = _referee_material(board)
