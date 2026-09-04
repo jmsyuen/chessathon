@@ -74,9 +74,26 @@ print(f"  network loaded: {loaded}, hidden {mod._HIDDEN}, cp_scale {mod._CP_SCAL
 if not loaded:
     print("  (expected before training; it MUST read True before the gates stage)")
 EOF
-  $PY -m tools.gen_openings --count "$OPENING_COUNT" --out tools/openings.py \
-      --judge "versions/$VS"
-  echo "commit tools/openings.py before going further"
+  # Only generate when the set is short. gen_openings judges each candidate with
+  # a time-limited search, so it is NOT reproducible: re-running it produces a
+  # different set from the one you committed, and then the SPRT runs on openings
+  # that are not the ones in the repo. Idempotent on purpose, so `all` is safe to
+  # re-run after this stage has been done once.
+  have=$($PY - <<'EOF'
+import re
+try:
+    print(len(re.findall(r'"[^"]+ [wb] ', open("tools/openings.py").read())))
+except OSError:
+    print(0)
+EOF
+)
+  if [ "$have" -ge "$OPENING_COUNT" ]; then
+    echo "  tools/openings.py already has $have positions; leaving it alone"
+  else
+    $PY -m tools.gen_openings --count "$OPENING_COUNT" --out tools/openings.py \
+        --judge "versions/$VS"
+    echo "commit AND PUSH tools/openings.py before going further"
+  fi
 }
 
 stage_data() {
@@ -254,7 +271,44 @@ case "${1:-all}" in
   *) echo "unknown stage: $1"; sed -n '2,15p' "$0"; exit 2 ;;
 esac
 
-say "done. commit results/ and bots/$BUILD/$BUILD.npz"
+case "${1:-all}" in
+  check)
+    say "check passed"
+    cat <<EOF
+  The network reading False here is correct and expected: bots/$BUILD/ has no
+  .npz yet, because the weights are the OUTPUT of data -> train -> gates. It has
+  to read True before gates, and nothing before then can make it True.
+
+  Commit exactly one thing now:
+      git add tools/openings.py && git commit -m "openings: 256 positions"
+
+  Then:  bash tools/run.sh data     # ~2-2.5 h
+EOF
+    ;;
+  data)  say "data done"
+         echo "  Next: bash tools/run.sh train   # ~80 min"
+         echo "  Do NOT commit data/ — the csv is ~600 MB." ;;
+  train) say "training done"
+         echo "  Next: bash tools/run.sh gates   # ~40 min, stops if nothing beats $VS" ;;
+  gates) say "gates done"
+         echo "  Next: bash tools/run.sh correctness" ;;
+  correctness)
+         say "correctness done"
+         echo "  Read the first-move cutoff rate above before going on."
+         echo "  Next: bash tools/run.sh verdict   # ~1 h per arm" ;;
+  verdict|ladder|filler)
+         say "done"
+         cat <<EOF
+  Commit the measurements and the weights that produced them:
+      git add results/ bots/$BUILD/$BUILD.npz
+      git commit -m "$BUILD: measurements" && git push
+EOF
+         ;;
+  ship)  say "packaged"
+         echo "  Upload submission.zip, then read the validation log." ;;
+  all)   say "all stages complete"
+         echo "  git add results/ bots/$BUILD/$BUILD.npz tools/openings.py" ;;
+esac
 
 # On --elo1: the hypotheses are what make SPRT slow. At elo1=5 the test asks "is
 # this at least 5 Elo better", a score difference of 0.007, so each game carries
