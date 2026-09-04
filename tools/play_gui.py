@@ -84,6 +84,14 @@ HARD_THINK_CAP_S = 600.0  # a hung bot should stall one move, not the whole serv
 # --------------------------------------------------------------------------- agents
 
 
+def make_limit(kind: str, value: int) -> chess.engine.Limit:
+    return {
+        "depth": chess.engine.Limit(depth=value),
+        "nodes": chess.engine.Limit(nodes=value),
+        "movetime": chess.engine.Limit(time=value / 1000.0),
+    }.get(kind, chess.engine.Limit(depth=12))
+
+
 class GuiAgent(Agent):
     """A harness Agent that will also tell you what it has been printing.
 
@@ -189,11 +197,13 @@ class Seat:
 @dataclass
 class PlayedMove:
     ply: int
+    move_no: int
     san: str
     uci: str
     side: str
     ms: float
     clock_after: float | None
+    fen: str = ""  # the position this move produced, so the board can travel back to it
     note: str | None = None
 
 
@@ -233,6 +243,13 @@ class Session:
         self.termination: str | None = None
         self.message = "Pick who plays which colour, then start the game."
         self.review = Review()
+        self.live_eval = False
+        self.live_kind = "depth"
+        self.live_value = 12
+        self.evals: dict[int, dict] = {}  # ply -> {"cp", "mate"}; ply 0 is the start position
+        self._pending = 0  # evaluations in flight; the bots wait for these to reach zero
+        self._engine_lock = threading.Lock()
+        self._live: chess.engine.SimpleEngine | None = None
         self.engine_path = engine_path
         self.sf_threads = sf_threads
         self.sf_hash = sf_hash
@@ -245,6 +262,7 @@ class Session:
         with self.lock:
             self._stop_agents()
             self._close_engine()
+            self._close_live()
 
     def _stop_agents(self) -> None:
         for seat in self.seats.values():
@@ -263,6 +281,28 @@ class Session:
             except Exception:
                 pass
             self._engine = None
+
+    def _close_live(self) -> None:
+        engine, self._live = self._live, None
+        if engine is not None:
+            try:
+                engine.quit()
+            except Exception:
+                pass
+
+    def _live_engine(self) -> chess.engine.SimpleEngine | None:
+        """One long-lived Stockfish for the bar, reused across moves."""
+        if self._live is not None:
+            return self._live
+        binary = self.find_engine()
+        if binary is None:
+            return None
+        self._live = chess.engine.SimpleEngine.popen_uci(binary)
+        try:
+            self._live.configure({"Threads": self.sf_threads, "Hash": self.sf_hash})
+        except Exception:
+            pass
+        return self._live
 
     def _touch(self) -> None:
         self.version += 1
@@ -290,6 +330,10 @@ class Session:
             self.bot_clock_mode = "fixed" if config.get("bot_clock") == "fixed" else "match"
             self.bot_fixed_ms = max(1, int(config.get("bot_fixed_ms", 3_000)))
             self.human_clock = bool(config.get("human_clock", False))
+            self.live_eval = bool(config.get("live_eval", False))
+            self.live_kind = str(config.get("live_kind", "depth"))
+            self.live_value = max(1, int(config.get("live_value", 12)))
+            self.evals = {}
 
             for colour, key in ((chess.WHITE, "white"), (chess.BLACK, "black")):
                 spec = config.get(key) or {}
@@ -377,7 +421,7 @@ class Session:
                 return
             self.phase = "playing"
             self.message = ""
-            self.turn_started_at = time.monotonic()
+            self._queue_eval()
             self._touch()
         self._maybe_think()
 
@@ -431,6 +475,7 @@ class Session:
     def _apply(self, move: chess.Move, colour: chess.Color, spent_ms: float) -> bool:
         """Push a move under referee clock rules. Returns True if the mover flagged."""
         san = self.board.san(move)
+        number = self.board.fullmove_number
         note = None
         if self.clock_enabled[colour]:
             self.clock[colour] -= spent_ms
@@ -438,11 +483,13 @@ class Session:
                 self.moves.append(
                     PlayedMove(
                         ply=len(self.board.move_stack) + 1,
+                        move_no=number,
                         san=san,
                         uci=move.uci(),
                         side="white" if colour == chess.WHITE else "black",
                         ms=spent_ms,
                         clock_after=self.clock[colour],
+                        fen=self.board.fen(),
                         note="flag",
                     )
                 )
@@ -458,18 +505,70 @@ class Session:
         self.moves.append(
             PlayedMove(
                 ply=len(self.board.move_stack),
+                move_no=number,
                 san=san,
                 uci=move.uci(),
                 side="white" if colour == chess.WHITE else "black",
                 ms=spent_ms,
                 clock_after=self.clock[colour] if self.clock_enabled[colour] else None,
+                fen=self.board.fen(),
                 note=note,
             )
         )
-        self.turn_started_at = time.monotonic()
         self._touch()
         self._check_terminal()
+        self._queue_eval()
         return False
+
+    def _queue_eval(self) -> None:
+        """Evaluate the position now, before either side is allowed to think.
+
+        Stockfish and the bot never run at the same time. If they did, the bar would
+        take a core off the bot and, in match mode, spend real milliseconds off its
+        clock -- which would make this rig lie about the one thing it exists to measure.
+        Serialising them costs wall-clock time and nothing else, because the referee's
+        clock only starts when the agent is asked for a move.
+        """
+        if not self.live_eval:
+            self.turn_started_at = time.monotonic()
+            return
+        self._pending += 1
+        threading.Thread(
+            target=self._evaluate,
+            args=(self.generation, len(self.board.move_stack), self.board.fen()),
+            daemon=True,
+        ).start()
+
+    def _evaluate(self, generation: int, ply: int, fen: str) -> None:
+        try:
+            with self._engine_lock:  # one search at a time; SimpleEngine is not reentrant
+                engine = self._live_engine()
+                if engine is None:
+                    with self.lock:
+                        self.live_eval = False
+                        self.message = "No Stockfish binary found, so the bar is off."
+                else:
+                    scored = self._score(
+                        engine, make_limit(self.live_kind, self.live_value), chess.Board(fen)
+                    )
+                    with self.lock:
+                        if generation == self.generation:
+                            self.evals[ply] = {"cp": scored["cp"], "mate": scored["mate"]}
+        except Exception as error:  # noqa: BLE001 -- a dead engine must not stop the game
+            self._close_live()
+            with self.lock:
+                self.live_eval = False
+                self.message = f"The evaluation bar stopped: {error}"
+        finally:
+            resume = False
+            with self.lock:
+                self._pending = max(0, self._pending - 1)
+                if self._pending == 0:
+                    self.turn_started_at = time.monotonic()
+                    resume = True
+                self._touch()
+            if resume:
+                self._maybe_think()
 
     def _check_terminal(self) -> None:
         """The referee's own test, claim_draw included. That flag loses won games."""
@@ -516,7 +615,7 @@ class Session:
 
     def _maybe_think(self) -> None:
         with self.lock:
-            if self.phase != "playing" or self.thinking or self.paused:
+            if self.phase != "playing" or self.thinking or self.paused or self._pending:
                 return
             colour = self.board.turn
             seat = self.seats[colour]
@@ -585,7 +684,7 @@ class Session:
         """Un-pause / kick the bot when it is its turn."""
         with self.lock:
             self.paused = False
-            if self.phase == "playing" and not self.thinking:
+            if self.phase == "playing" and not self.thinking and not self._pending:
                 self.turn_started_at = time.monotonic()
             self._touch()
         self._maybe_think()
@@ -622,7 +721,9 @@ class Session:
             # if the rewind lands on a bot, hold it -- otherwise it instantly replays
             # into the position you just took back
             self.paused = self.seats[self.board.turn].kind == "bot"
-            self.turn_started_at = time.monotonic()
+            for ply in [p for p in self.evals if p > len(self.board.move_stack)]:
+                del self.evals[ply]
+            self._queue_eval()
             self._touch()
 
     def resign(self) -> None:
@@ -689,23 +790,27 @@ class Session:
         replayed: list[PlayedMove] = []
         for move in game.mainline_moves():
             san = board.san(move)
+            number, side = board.fullmove_number, board.turn
+            board.push(move)
             replayed.append(
                 PlayedMove(
-                    ply=len(board.move_stack) + 1,
+                    ply=len(board.move_stack),
+                    move_no=number,
                     san=san,
                     uci=move.uci(),
-                    side="white" if board.turn == chess.WHITE else "black",
+                    side="white" if side == chess.WHITE else "black",
                     ms=0.0,
                     clock_after=None,
+                    fen=board.fen(),
                 )
             )
-            board.push(move)
         if not replayed:
             return "That PGN has no moves."
         with self.lock:
             self.generation += 1
             self._stop_agents()
             self.review = Review()
+            self.evals = {}
             self.start_fen = game.board().fen()
             self.board = board
             self.moves = replayed
@@ -727,9 +832,11 @@ class Session:
         for candidate in (self.engine_path, os.environ.get("SPAR_ENGINE"), "stockfish"):
             if not candidate:
                 continue
-            resolved = shutil.which(candidate) or (
-                candidate if Path(candidate).is_file() else None
-            )
+            # a path that exists but cannot be executed is not an engine; accepting it
+            # makes the bar report itself available and then fail on first use
+            resolved = shutil.which(candidate)
+            if resolved is None and Path(candidate).is_file() and os.access(candidate, os.X_OK):
+                resolved = candidate
             if resolved:
                 return resolved
         return None
@@ -764,11 +871,7 @@ class Session:
         return None
 
     def _review(self, generation: int, binary: str, limit_kind: str, limit_value: int) -> None:
-        limit = {
-            "depth": chess.engine.Limit(depth=limit_value),
-            "nodes": chess.engine.Limit(nodes=limit_value),
-            "movetime": chess.engine.Limit(time=limit_value / 1000.0),
-        }.get(limit_kind, chess.engine.Limit(depth=16))
+        limit = make_limit(limit_kind, limit_value)
 
         with self.lock:
             start_fen = self.start_fen
@@ -801,6 +904,10 @@ class Session:
                 self.review.rows = self._rows(scored, stack, played)
                 self.review.acpl = self._acpl(self.review.rows)
                 self.review.running = False
+                # the bar reads from one place, so a finished review replaces whatever
+                # the shallower live pass recorded
+                self.evals = {index: {"cp": item["cp"], "mate": item["mate"]}
+                              for index, item in enumerate(scored)}
                 self._touch()
         except Exception as error:  # noqa: BLE001
             with self.lock:
@@ -960,15 +1067,21 @@ class Session:
                 "moves": [
                     {
                         "ply": m.ply,
+                        "move_no": m.move_no,
                         "san": m.san,
                         "uci": m.uci,
                         "side": m.side,
                         "ms": round(m.ms),
                         "clock_after": None if m.clock_after is None else round(m.clock_after),
+                        "fen": m.fen,
                         "note": m.note,
                     }
                     for m in self.moves
                 ],
+                "evals": self.evals,
+                "live_eval": self.live_eval,
+                "live_limit": f"{self.live_kind} {self.live_value}",
+                "evaluating": self._pending > 0,
                 "review": {
                     "running": self.review.running,
                     "done": self.review.done,
@@ -1004,6 +1117,20 @@ class Session:
 # --------------------------------------------------------------------------- http
 
 
+POST_ROUTES = frozenset(
+    {
+        "/api/new",
+        "/api/move",
+        "/api/go",
+        "/api/pause",
+        "/api/takeback",
+        "/api/resign",
+        "/api/loadpgn",
+        "/api/review",
+    }
+)
+
+
 class Handler(BaseHTTPRequestHandler):
     session: Session
     protocol_version = "HTTP/1.1"
@@ -1031,7 +1158,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         route = urlparse(self.path).path
-        if route == "/":
+        if route in POST_ROUTES:
+            self._send({"error": f"{route} needs POST, not GET"}, status=405)
+        elif route == "/":
             self._send(PAGE.replace("__PIECES__", piece_sprites()), kind="text/html")
         elif route == "/api/state":
             self._send(self.session.snapshot())
@@ -1112,11 +1241,17 @@ body{
   display:grid;grid-template-columns:270px minmax(0,1fr) 380px;gap:1px;
   background-color:var(--line);overflow:hidden;
 }
-.col{background:var(--ink);overflow-y:auto;padding:18px;min-width:0}
+.col{background:var(--ink);overflow-y:auto;scrollbar-gutter:stable;padding:18px;min-width:0}
 .col::-webkit-scrollbar{width:9px}
 .col::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
-#centre{--bw:min(66vh,100%);background:var(--ink);display:flex;flex-direction:column;
-  align-items:center;gap:10px;padding:18px 24px;overflow-y:auto;min-width:0}
+/* The board is sized from the viewport height minus the fixed chrome around it, not
+   from whatever space is left over. It also never shrinks: as a flex item it would
+   otherwise be compressed vertically the moment the status line grew a second row,
+   which changed the board's size at the exact moment a game started. */
+#centre{--bw:max(280px,min(calc(100vh - 210px),100%));background:var(--ink);display:flex;
+  flex-direction:column;align-items:center;gap:10px;padding:18px 24px;
+  overflow-y:auto;scrollbar-gutter:stable;min-width:0}
+#centre > *{flex:none}
 @media (max-width:1180px){
   body{grid-template-columns:250px minmax(0,1fr);grid-template-rows:1fr auto;height:auto;overflow:auto}
   #right{grid-column:1/-1;max-height:60vh}
@@ -1158,8 +1293,30 @@ button.primary:hover{filter:brightness(1.08)}
 .actions button{flex:1 1 auto}
 
 /* board */
-#boardwrap{position:relative;width:var(--bw);aspect-ratio:1}
-#board{display:grid;grid-template-columns:repeat(8,1fr);width:100%;height:100%;
+#boardrow{display:flex;gap:8px;width:var(--bw)}
+#boardwrap{position:relative;flex:none;align-self:start;
+  width:calc(100% - 32px);aspect-ratio:1}   /* 24px bar + 8px gap */
+#evalbar[hidden] + #boardwrap{width:100%}   /* no bar, no gap, so take it all back */
+#evalbar{position:relative;flex:none;align-self:stretch;width:24px;background:#10161b;
+  border:1px solid var(--line);border-radius:2px;overflow:hidden}
+#evalbar[hidden]{display:none}
+#evalbar i{position:absolute;left:0;right:0;bottom:0;height:50%;background:#e7edf1;
+  transition:height .25s ease}
+#evalbar.flip i{bottom:auto;top:0}
+#evalbar .v{position:absolute;left:0;right:0;bottom:3px;text-align:center;
+  font:600 9px/1.4 var(--data);color:#10161b}
+#evalbar.flip .v{bottom:auto;top:3px}
+#evalbar.on-dark .v{color:var(--dim)}
+#evalbar.pending{opacity:.55}
+@media (prefers-reduced-motion:reduce){#evalbar i{transition:none}}
+
+#transport{display:flex;align-items:center;gap:6px;width:var(--bw)}
+#transport button{padding:5px 10px;font-size:12px}
+#transport #tPos{flex:1;text-align:center;font-family:var(--data);
+  font-variant-numeric:tabular-nums;font-size:12px;color:var(--dim)}
+#transport.browsing #tPos{color:var(--warm)}
+#board{position:absolute;inset:0;display:grid;
+  grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);
   border:1px solid var(--line);user-select:none}
 .sq{position:relative;display:flex;align-items:center;justify-content:center}
 .sq.light{background:var(--light)} .sq.dark{background:var(--dark)}
@@ -1190,7 +1347,7 @@ button.primary:hover{filter:brightness(1.08)}
 @keyframes beat{0%,100%{opacity:.25}50%{opacity:1}}
 @media (prefers-reduced-motion:reduce){.clockline .beat{animation:none;opacity:1}}
 
-#status{width:var(--bw);min-height:40px;font-size:13px;color:var(--dim)}
+#status{width:var(--bw);min-height:44px;font-size:13px;color:var(--dim)}
 #status b{color:var(--text);font-weight:600}
 #status.alert b{color:var(--warm)}
 
@@ -1254,6 +1411,15 @@ tr.mv.on{background:var(--raise)}
   </div>
   <label class="row"><input type="checkbox" id="humanClock"> Run my clock too</label>
 
+  <h2>Engine evaluation</h2>
+  <label class="row"><input type="checkbox" id="liveEval"> Show the evaluation bar</label>
+  <div class="field" id="liveField" style="display:none">
+    <span>Depth per position</span>
+    <input type="number" id="liveDepth" value="12" min="1" max="30">
+  </div>
+  <p class="note" id="liveNote">Stockfish evaluates each new position before either side
+    is allowed to think, so it never takes CPU from the bot or spends its clock.</p>
+
   <h2>Starting position</h2>
   <select id="startPick">
     <option value="standard">Initial position</option>
@@ -1275,12 +1441,22 @@ tr.mv.on{background:var(--raise)}
 
 <div id="centre">
   <div class="clockline" id="topClock"><span class="beat"></span><span class="who"></span><span class="t">—</span></div>
-  <div id="boardwrap">
-    <div id="board"></div>
-    <svg id="arrows" viewBox="0 0 8 8"></svg>
-    <div id="promo"></div>
+  <div id="boardrow">
+    <div id="evalbar" hidden><i></i><span class="v"></span></div>
+    <div id="boardwrap">
+      <div id="board"></div>
+      <svg id="arrows" viewBox="0 0 8 8"></svg>
+      <div id="promo"></div>
+    </div>
   </div>
   <div class="clockline" id="botClock"><span class="beat"></span><span class="who"></span><span class="t">—</span></div>
+  <div id="transport">
+    <button id="tStart">Start</button>
+    <button id="tBack">Back</button>
+    <span id="tPos">—</span>
+    <button id="tFwd">Forward</button>
+    <button id="tNow">Present</button>
+  </div>
   <div id="status"></div>
   <div class="actions" style="width:var(--bw)">
     <button id="flip">Flip board</button>
@@ -1324,15 +1500,26 @@ tr.mv.on{background:var(--raise)}
 const $ = s => document.querySelector(s);
 const FILES = "abcdefgh";
 let S = null, sel = null, orient = "white", tab = "moves";
-let lastFen = null, lastPoll = 0, cursor = null, pendingPromo = null, agents = [];
+let lastFen = null, agents = [];
+/* histPly: how many plies of the game the board is showing. null means the present.
+   Anything else is read only -- the game cannot be played from the past. */
+let histPly = null, pausedByBrowsing = false;
 
 /* ---------- helpers ---------- */
+/* Every /api/ route that changes something is POST-only. A helper that quietly
+   downgraded a bodyless call to GET is how "Resign" reached do_GET and came back
+   "no such route". Reads use getJSON. */
 async function api(path, body){
-  const opts = body === undefined ? {} : {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)};
-  const res = await fetch(path, opts);
+  const res = await fetch(path, {
+    method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body || {})
+  });
   const data = await res.json().catch(()=>({}));
   if(!res.ok && data.error) flash(data.error);
   return data;
+}
+async function getJSON(path){
+  const res = await fetch(path);
+  return res.json().catch(()=>({}));
 }
 function flash(text){ const s = $("#status"); s.classList.add("alert"); s.innerHTML = "<b>"+esc(text)+"</b>"; }
 function esc(t){ return String(t).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
@@ -1362,15 +1549,24 @@ function parseFen(fen){
   });
   return out;
 }
-function reviewRow(){ return cursor !== null && S.review.rows[cursor] ? S.review.rows[cursor] : null; }
-function shownFen(){ const row = reviewRow(); return row ? row.fen_before : S.fen; }
+function plyCount(){ return S && S.moves ? S.moves.length : 0; }
+function viewPly(){ return histPly === null ? plyCount() : histPly; }
+function browsing(){ return histPly !== null; }
+function shownFen(){
+  if(!browsing()) return S.fen;
+  if(histPly === 0) return S.start_fen;
+  return (S.moves[histPly-1] || {}).fen || S.fen;
+}
+/* the review row for the move played *from* the position on screen */
+function nextRow(){ return (S.review.rows || []).find(r => r.ply === viewPly() + 1) || null; }
 function drawBoard(){
   const board = $("#board"), pieces = parseFen(shownFen());
   const ranks = orient === "white" ? [8,7,6,5,4,3,2,1] : [1,2,3,4,5,6,7,8];
   const files = orient === "white" ? [0,1,2,3,4,5,6,7] : [7,6,5,4,3,2,1,0];
-  const targets = sel && S.legal[sel] ? S.legal[sel] : [];
-  const shown = reviewRow();
-  const last = shown ? [shown.uci.slice(0,2), shown.uci.slice(2,4)] : S.last_move;
+  const targets = (!browsing() && sel && S.legal[sel]) ? S.legal[sel] : [];
+  const played = viewPly() > 0 ? S.moves[viewPly()-1] : null;
+  const last = browsing() ? (played ? [played.uci.slice(0,2), played.uci.slice(2,4)] : null)
+                          : S.last_move;
   board.innerHTML = "";
   for(const rank of ranks) for(const fi of files){
     const name = FILES[fi] + rank;
@@ -1378,7 +1574,7 @@ function drawBoard(){
     cell.className = "sq " + ((fi + rank) % 2 ? "light" : "dark");
     if(last && last.includes(name)) cell.classList.add("last");
     if(name === sel) cell.classList.add("sel");
-    if(name === S.check_square && cursor === null) cell.classList.add("check");
+    if(name === S.check_square && !browsing()) cell.classList.add("check");
     cell.dataset.sq = name;
     const piece = pieces[name];
     if(piece){
@@ -1399,7 +1595,31 @@ function drawBoard(){
     cell.addEventListener("click", () => click(name));
     board.appendChild(cell);
   }
-  drawArrow(shown);
+  drawArrow(browsing() ? nextRow() : null);
+  checkGeometry();
+}
+
+/* The board's geometry has been wrong twice, and neither time did it announce itself.
+   Measure it once and say so, rather than leaving it to be noticed. */
+let geometryChecked = false;
+function checkGeometry(){
+  if(geometryChecked) return;
+  const cells = $("#board").children;
+  if(cells.length !== 64) return;
+  const first = cells[0].getBoundingClientRect();
+  if(first.height < 1) return;                 // not laid out yet; try again next draw
+  geometryChecked = true;
+  let worst = 0;
+  for(const cell of cells){
+    const r = cell.getBoundingClientRect();
+    worst = Math.max(worst, Math.abs(r.height - first.height),
+                            Math.abs(r.width - first.width),
+                            Math.abs(r.height - r.width));
+  }
+  if(worst > 2){
+    console.warn("board squares differ by up to", worst.toFixed(1), "px");
+    flash(`The board rendered unevenly: squares differ by up to ${worst.toFixed(0)}px.`);
+  }
 }
 function centre(name){
   const fi = FILES.indexOf(name[0]), rank = +name[1];
@@ -1420,8 +1640,8 @@ function drawArrow(row){
        fill="var(--live)" opacity=".85"/>`;
 }
 function click(name){
-  if(cursor !== null){ cursor = null; drawBoard(); renderReview(); return; }
-  if(!S || S.phase !== "playing" || S.thinking) return;
+  if(!S || browsing()) return;          // the past is read only
+  if(S.phase !== "playing" || S.thinking) return;
   if(S.seats[S.turn].kind !== "human") return;
   if(sel && S.legal[sel] && S.legal[sel].includes(name)){
     if(S.promotions.includes(sel + name)) return askPromo(sel, name);
@@ -1448,14 +1668,21 @@ function askPromo(from, to){
 function renderMoves(){
   const pane = $("#paneMoves");
   if(!S.moves.length){ pane.innerHTML = '<p class="empty">No moves yet.</p>'; return; }
-  let html = "<table><tr><th></th><th>White</th><th class='n'>time</th><th>Black</th><th class='n'>time</th></tr>";
-  for(let i = 0; i < S.moves.length; i += 2){
-    const w = S.moves[i], b = S.moves[i+1];
-    html += `<tr><td class="n">${i/2+1}</td>
-      <td class="san">${esc(w.san)}</td><td class="n">${w.ms ? (w.ms/1000).toFixed(2) : ""}</td>
-      <td class="san">${b ? esc(b.san) : ""}</td><td class="n">${b && b.ms ? (b.ms/1000).toFixed(2) : ""}</td></tr>`;
-  }
+  const evals = S.evals || {}, showEval = Object.keys(evals).length > 0;
+  let html = `<table><tr><th class="n">#</th><th>move</th><th class="n">time</th>${
+    showEval ? '<th class="n">eval</th>' : ""}</tr>`;
+  S.moves.forEach((m, i) => {
+    const ply = i + 1, e = evals[String(ply)];
+    html += `<tr class="mv ${viewPly() === ply ? "on" : ""}" data-ply="${ply}">
+      <td class="n">${m.move_no}${m.side === "white" ? "." : "…"}</td>
+      <td><span class="san">${esc(m.san)}</span>${
+        m.note ? ` <span class="tag blunder">${esc(m.note)}</span>` : ""}</td>
+      <td class="n">${m.ms ? (m.ms/1000).toFixed(2) : ""}</td>
+      ${showEval ? `<td class="n">${e ? shortEval(e) : ""}</td>` : ""}</tr>`;
+  });
   pane.innerHTML = html + "</table>";
+  pane.querySelectorAll("tr.mv").forEach(tr =>
+    tr.addEventListener("click", () => goTo(+tr.dataset.ply)));
 }
 function renderReview(){
   const pane = $("#reviewOut"), r = S.review;
@@ -1481,7 +1708,7 @@ function renderReview(){
     html += "<table><tr><th class='n'>#</th><th>move</th><th class='n'>eval</th><th class='n'>lost</th><th>best</th></tr>";
     r.rows.forEach((row, i) => {
       const dots = row.side === "white" ? row.move_no + "." : row.move_no + "…";
-      html += `<tr class="mv ${cursor === i ? "on" : ""}" data-i="${i}">
+      html += `<tr class="mv ${viewPly() === row.ply - 1 ? "on" : ""}" data-ply="${row.ply - 1}">
         <td class="n">${dots}</td>
         <td><span class="san">${esc(row.san)}</span> <span class="tag ${row.tag}">${row.tag === "ok" ? "" : row.tag}</span></td>
         <td class="n">${evalText(row,"after")}</td>
@@ -1493,20 +1720,69 @@ function renderReview(){
       <span class="tag inaccuracy">&lt;75</span><span class="tag mistake">&lt;150</span><span class="tag blunder">150+</span></div>`;
   }
   pane.innerHTML = html;
-  pane.querySelectorAll("tr.mv").forEach(tr => tr.addEventListener("click", () => {
-    cursor = cursor === +tr.dataset.i ? null : +tr.dataset.i;
-    lastFen = null; renderBoardFor(); renderReview();
-  }));
+  pane.querySelectorAll("tr.mv").forEach(tr =>
+    tr.addEventListener("click", () => goTo(+tr.dataset.ply)));
   if(r.rows.length) drawSpark(r.rows);
 }
 function renderBoardFor(){ lastFen = shownFen(); drawBoard(); }
+
+/* Stepping into the past holds a running game so the present does not move while you
+   look at it; returning releases it, but only if the hold was ours to release. */
+function goTo(target){
+  const max = plyCount();
+  const clamped = Math.max(0, Math.min(max, target));
+  histPly = clamped === max ? null : clamped;
+  sel = null;
+  if(browsing() && S.phase === "playing" && !S.paused && !pausedByBrowsing){
+    pausedByBrowsing = true;
+    api("/api/pause").then(apply);
+  } else if(!browsing() && pausedByBrowsing){
+    pausedByBrowsing = false;
+    api("/api/go").then(apply);
+  }
+  renderBoardFor(); renderTransport(); renderEval(); renderStatus(); renderButtons();
+  if(tab === "moves") renderMoves();
+  if(tab === "review") renderReview();
+}
+function renderTransport(){
+  const max = plyCount(), at = viewPly();
+  $("#tPos").textContent = max ? `${at} / ${max}` : "—";
+  $("#transport").classList.toggle("browsing", browsing());
+  $("#tStart").disabled = $("#tBack").disabled = at <= 0;
+  $("#tFwd").disabled = $("#tNow").disabled = !browsing();
+}
+function shortEval(e){
+  if(e.mate === 0) return "#";
+  if(e.mate !== null && e.mate !== undefined) return (e.mate > 0 ? "#" : "#-") + Math.abs(e.mate);
+  const v = e.cp / 100;
+  return (v >= 0 ? "+" : "") + (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(1));
+}
+function evalShare(e){
+  if(e.mate === 0) return e.cp > 0 ? 100 : 0;
+  if(e.mate !== null && e.mate !== undefined) return e.mate > 0 ? 100 : 0;
+  return 50 + 50 * Math.tanh(e.cp / 400);
+}
+function renderEval(){
+  const bar = $("#evalbar"), evals = S.evals || {};
+  const show = S.live_eval || Object.keys(evals).length > 0;
+  bar.hidden = !show;
+  if(!show) return;
+  bar.classList.toggle("flip", orient === "black");
+  bar.classList.toggle("pending", !!S.evaluating && !browsing());
+  const e = evals[String(viewPly())];
+  if(!e){ bar.querySelector(".v").textContent = "·"; return; }
+  const share = Math.max(0, Math.min(100, evalShare(e)));
+  bar.querySelector("i").style.height = share + "%";
+  bar.querySelector(".v").textContent = shortEval(e);
+  bar.classList.toggle("on-dark", share < 16);
+}
 function drawSpark(rows){
   const svg = $("#spark"); if(!svg) return;
   const clamp = v => Math.max(-600, Math.min(600, v));
   const pts = rows.map((r,i) => [i, 50 - clamp(r.eval_after)/12]);
   const line = pts.map(([x,y],i) => (i ? "L" : "M") + x + " " + y.toFixed(1)).join(" ");
   const area = line + ` L ${rows.length-1} 50 L 0 50 Z`;
-  const mark = cursor !== null ? `<line x1="${cursor}" y1="0" x2="${cursor}" y2="100"
+  const mark = browsing() ? `<line x1="${viewPly()}" y1="0" x2="${viewPly()}" y2="100"
       stroke="var(--live)" stroke-width=".6" opacity=".9"/>` : "";
   svg.innerHTML = `<line x1="0" y1="50" x2="${rows.length}" y2="50" stroke="var(--line)" stroke-width=".8"/>
     <path d="${area}" fill="var(--text)" opacity=".10"/>
@@ -1536,6 +1812,13 @@ function renderClocks(){
 function renderStatus(){
   const s = $("#status"); s.classList.remove("alert");
   let text = "";
+  if(browsing()){
+    s.classList.add("alert");
+    s.innerHTML = `<b>Position ${viewPly()} of ${plyCount()}, read only.</b> ` +
+      (pausedByBrowsing ? "The game is held while you look. " : "") +
+      "Press Present to resume play.";
+    return;
+  }
   if(S.phase === "idle") text = S.message;
   else if(S.phase === "starting") text = "<b>Starting the bots.</b> Import time counts against the 60s budget.";
   else if(S.phase === "review") text = esc(S.message);
@@ -1555,15 +1838,18 @@ function apply(state){
   if(!state || !state.phase) return;
   S = state;
   if(shownFen() !== lastFen || sel !== null) renderBoardFor();
-  renderClocks(); renderStatus();
+  renderClocks(); renderStatus(); renderTransport(); renderEval();
   if(tab === "moves") renderMoves();
   if(tab === "review") renderReview();
   if(tab === "log") renderLog();
-  const playing = S.phase === "playing";
-  $("#back").disabled = !S.moves.length || S.thinking || S.phase === "review";
-  $("#go").disabled = !playing || S.thinking;
-  $("#pause").disabled = !playing;
-  $("#resign").disabled = !playing;
+  renderButtons();
+}
+function renderButtons(){
+  const playing = S.phase === "playing", past = browsing();
+  $("#back").disabled = !S.moves.length || S.thinking || S.phase === "review" || past;
+  $("#go").disabled = !playing || S.thinking || past;
+  $("#pause").disabled = !playing || past;
+  $("#resign").disabled = !playing || past;
 }
 async function poll(){
   try{
@@ -1585,16 +1871,23 @@ function seatSpec(select){
   return select.value === "human" ? {kind:"human"} : {kind:"bot", path:select.value};
 }
 async function boot(){
-  const meta = await api("/api/agents");
+  const meta = await getJSON("/api/agents");
   agents = meta.agents || [];
   seatOptions($("#whitePick"), "human");
   seatOptions($("#blackPick"), agents.length ? agents[0].path : "human");
   if(!meta.openings) $("#startPick").querySelector('option[value=opening]').disabled = true;
+  const first = await getJSON("/api/state");
+  if(!first.engine_available){
+    $("#liveEval").disabled = true;
+    $("#liveNote").textContent =
+      "No Stockfish binary found, so the bar is unavailable. Start this tool with " +
+      "--engine /path/to/stockfish, or set SPAR_ENGINE.";
+  }
 
   $("#start").addEventListener("click", () => {
     const white = seatSpec($("#whitePick"));
     orient = white.kind === "human" ? "white" : (seatSpec($("#blackPick")).kind === "human" ? "black" : "white");
-    cursor = null; lastFen = null; sel = null;
+    histPly = null; pausedByBrowsing = false; lastFen = null; sel = null;
     api("/api/new", {
       white, black: seatSpec($("#blackPick")),
       base_ms: Math.round(+$("#baseS").value * 1000),
@@ -1603,7 +1896,10 @@ async function boot(){
       bot_fixed_ms: +$("#fixedMs").value,
       human_clock: $("#humanClock").checked,
       start: $("#startPick").value,
-      fen: $("#fen").value
+      fen: $("#fen").value,
+      live_eval: $("#liveEval").checked,
+      live_kind: "depth",
+      live_value: +$("#liveDepth").value
     }).then(apply);
   });
   document.querySelectorAll("input[name=botclock]").forEach(r => r.addEventListener("change", () => {
@@ -1612,13 +1908,22 @@ async function boot(){
   $("#startPick").addEventListener("change", e => {
     $("#fenField").style.display = e.target.value === "fen" ? "block" : "none";
   });
-  $("#flip").addEventListener("click", () => { orient = orient === "white" ? "black" : "white"; drawBoard(); renderClocks(); });
-  $("#back").addEventListener("click", () => { cursor = null; lastFen = null; api("/api/takeback").then(apply); });
+  $("#liveEval").addEventListener("change", e => {
+    $("#liveField").style.display = e.target.checked ? "block" : "none";
+  });
+  $("#tStart").addEventListener("click", () => goTo(0));
+  $("#tBack").addEventListener("click", () => goTo(viewPly() - 1));
+  $("#tFwd").addEventListener("click", () => goTo(viewPly() + 1));
+  $("#tNow").addEventListener("click", () => goTo(plyCount()));
+  $("#flip").addEventListener("click", () => {
+    orient = orient === "white" ? "black" : "white"; drawBoard(); renderClocks(); renderEval();
+  });
+  $("#back").addEventListener("click", () => { histPly = null; lastFen = null; api("/api/takeback").then(apply); });
   $("#go").addEventListener("click", () => api("/api/go").then(apply));
   $("#pause").addEventListener("click", () => api("/api/pause").then(apply));
   $("#resign").addEventListener("click", () => api("/api/resign").then(apply));
   $("#loadPgn").addEventListener("click", () => {
-    cursor = null; lastFen = null;
+    histPly = null; pausedByBrowsing = false; lastFen = null;
     api("/api/loadpgn", {pgn: $("#pgnIn").value}).then(apply);
   });
   $("#savePgn").addEventListener("click", async () => {
@@ -1646,9 +1951,10 @@ async function boot(){
   document.addEventListener("keydown", e => {
     if(!S || e.target.matches("input,textarea,select")) return;
     if(e.key === "f") $("#flip").click();
-    if(e.key === "ArrowLeft" && S.review.rows.length){ cursor = Math.max(0, (cursor === null ? S.review.rows.length : cursor) - 1); lastFen=null; renderBoardFor(); renderReview(); }
-    if(e.key === "ArrowRight" && S.review.rows.length){ cursor = cursor === null ? 0 : Math.min(S.review.rows.length-1, cursor+1); lastFen=null; renderBoardFor(); renderReview(); }
-    if(e.key === "Escape"){ cursor = null; sel = null; lastFen = null; renderBoardFor(); renderReview(); }
+    if(e.key === "ArrowLeft"){ e.preventDefault(); goTo(viewPly() - 1); }
+    if(e.key === "ArrowRight"){ e.preventDefault(); goTo(viewPly() + 1); }
+    if(e.key === "Home"){ e.preventDefault(); goTo(0); }
+    if(e.key === "End" || e.key === "Escape"){ e.preventDefault(); goTo(plyCount()); }
   });
   poll();
 }
