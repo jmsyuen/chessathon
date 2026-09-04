@@ -1,0 +1,607 @@
+
+=== bot4's own SPRT against bot1_baseline ===
+6 workers x 50 games, pairs split 6 ways. Pooling every 5s; stopping early if SPRT decides.
+
+s3 game    6 as white + checkmate               31.6s
+s2 game    4 as white - checkmate               49.9s
+s1 game    2 as white + checkmate               66.2s
+s3 game    7 as black + checkmate               40.4s
+s4 game    8 as white - checkmate               74.5s
+s0 game    0 as white + checkmate               80.2s
+s5 game   10 as white - checkmate               89.4s
+s3 game   18 as white + checkmate               29.0s
+s1 game    3 as black = threefold_repetition    37.7s
+s2 game    5 as black - checkmate               54.3s
+s1 game   14 as white + checkmate               34.3s
+s4 game    9 as black + checkmate               65.2s
+s0 game    1 as black + checkmate               64.3s
+s5 game   11 as black + checkmate               57.8s
+s3 game   19 as black + checkmate               58.7s
+s1 game   15 as black + checkmate               27.2s
+s4 game   20 as white + checkmate               36.0s
+s2 game   16 as white = stalemate               85.1s
+s3 game   30 as white + checkmate               61.4s
+s0 game   12 as white = insufficient_material   80.5s
+s1 game   26 as white + checkmate               63.1s
+s5 game   22 as white + checkmate               82.1s
+s4 game   21 as black + checkmate               60.9s
+s3 game   31 as black + checkmate               28.2s
+s2 game   17 as black + checkmate               73.4s
+s0 game   13 as black - checkmate               65.3s
+s1 game   27 as black + checkmate               67.1s
+s4 game   32 as white + checkmate               80.8s
+s3 game   42 as white = insufficient_material   77.3s
+s5 game   23 as black = threefold_repetition   103.5s
+s2 game   28 as white - checkmate               81.9s
+s4 game   33 as black + checkmate               38.3s
+s0 game   24 as white + checkmate               67.1s
+s5 game   34 as white = threefold_repetition    26.2s
+s3 game   43 as black - checkmate               67.9s
+s1 game   38 as white = fifty_moves            104.3s
+s2 game   29 as black = insufficient_material   65.1s
+s4 game   44 as white - checkmate               55.8s
+s0 game   25 as black + checkmate               69.1s
+s1 game   39 as black = threefold_repetition    73.0s
+s5 game   35 as black = insufficient_material  114.5s
+s2 game   40 as white - checkmate               64.3s
+s3 game   54 as white + checkmate               82.8s
+s0 game   36 as white + checkmate               55.6s
+s1 game   50 as white + checkmate               42.2s
+s4 game   45 as black = fifty_moves            105.3s
+s2 game   41 as black + checkmate               43.7s
+s0 game   37 as black - checkmate               51.3s
+s1 game   51 as black + checkmate               20.1s
+s3 game   55 as black + checkmate               63.1s
+s5 game   46 as white + checkmate               80.4s
+s0 game   48 as white + checkmate               30.2s
+s4 game   56 as white + checkmate               61.9s
+s0 game   49 as black = threefold_repetition    20.8s
+s1 game   62 as white + checkmate               57.7s
+s5 game   47 as black + checkmate               59.9s
+s2 game   52 as white = insufficient_material  102.4s
+s3 game   66 as white + checkmate               81.0s
+s0 game   60 as white + checkmate               54.3s
+s4 game   57 as black - checkmate               60.6s
+s1 game   63 as black = threefold_repetition    54.5s
+s2 game   53 as black + checkmate               44.8s
+s3 game   67 as black = threefold_repetition    44.4s
+s4 game   68 as white + checkmate               42.1s
+s5 game   58 as white - checkmate               71.6s
+s1 game   74 as white = threefold_repetition    45.2s
+s0 game   61 as black - checkmate               69.9s
+s4 game   69 as black + checkmate               30.1s
+s3 game   78 as white + checkmate               56.9s
+s5 game   59 as black + checkmate               45.7s
+s2 game   64 as white - checkmate               76.5s
+s5 game   70 as white + checkmate               14.1s
+s3 game   79 as black + checkmate               50.4s
+s0 game   72 as white = threefold_repetition    67.9s
+s1 game   75 as black = fifty_moves             87.8s
+s5 game   71 as black = threefold_repetition    43.3s
+s3 game   90 as white + checkmate               17.4s
+s2 game   65 as black - checkmate               51.8s
+s0 game   73 as black + checkmate               21.5s
+s1 game   86 as white - checkmate               30.9s
+s4 game   80 as white + checkmate              105.8s
+s0 game   84 as white + checkmate               38.5s
+s2 game   76 as white + checkmate               57.2s
+s5 game   82 as white - checkmate               71.9s
+s1 game   87 as black = threefold_repetition    56.9s
+s0 game   85 as black = threefold_repetition    38.4s
+s2 game   77 as black + checkmate               27.3s
+s3 game   91 as black + checkmate               90.3s
+s5 game   83 as black = threefold_repetition    43.8s
+s3 game  102 as white + checkmate               29.1s
+s4 game   81 as black = fifty_moves             96.1s
+s3 game  103 as black + checkmate               15.8s
+s2 game   88 as white - checkmate               49.3s
+s1 game   98 as white - checkmate               69.7s
+s0 game   96 as white + checkmate               82.9s
+s5 game   94 as white + checkmate               62.7s
+s3 game  114 as white + checkmate               46.4s
+s4 game   92 as white - checkmate               69.4s
+s2 game   89 as black + checkmate               64.1s
+s0 game   97 as black + checkmate               36.8s
+s0 game  108 as white + checkmate               28.6s
+s3 game  115 as black + checkmate               54.4s
+s5 game   95 as black + checkmate               59.7s
+s4 game   93 as black - checkmate               44.3s
+s2 game  100 as white + checkmate               46.1s
+s1 game   99 as black - checkmate              112.4s
+s4 game  104 as white + checkmate               27.0s
+s2 game  101 as black - checkmate               39.4s
+s0 game  109 as black + checkmate               54.6s
+s3 game  126 as white = insufficient_material   76.5s
+s5 game  106 as white + checkmate               83.6s
+s1 game  110 as white + checkmate               67.3s
+s4 game  105 as black + checkmate               66.6s
+s3 game  127 as black + checkmate               29.5s
+s2 game  112 as white + checkmate               64.4s
+s0 game  120 as white = threefold_repetition    67.2s
+s1 game  111 as black + checkmate               49.3s
+s4 game  116 as white + checkmate               49.2s
+s5 game  107 as black + checkmate               59.4s
+s3 game  138 as white + checkmate               50.4s
+s2 game  113 as black + checkmate               52.1s
+s0 game  121 as black = threefold_repetition    53.1s
+s5 game  118 as white - checkmate               33.3s
+s2 game  124 as white - checkmate               30.0s
+s4 game  117 as black = insufficient_material   75.8s
+s5 game  119 as black + checkmate               45.3s
+s0 game  132 as white + checkmate               56.5s
+s3 game  139 as black - checkmate               72.2s
+s1 game  122 as white + checkmate               95.7s
+s2 game  125 as black + checkmate               60.2s
+s5 game  130 as white + checkmate               41.7s
+s1 game  123 as black - checkmate               41.8s
+s3 game  150 as white - checkmate               59.0s
+s0 game  133 as black - checkmate               62.3s
+s4 game  128 as white + checkmate               78.0s
+s2 game  136 as white + checkmate               47.7s
+s1 game  134 as white + checkmate               39.6s
+s5 game  131 as black - checkmate               65.3s
+s3 game  151 as black + checkmate               41.8s
+s0 game  144 as white + checkmate               45.2s
+s3 game  162 as white = threefold_repetition    18.0s
+s4 game  129 as black + checkmate               51.8s
+s2 game  137 as black + checkmate               44.6s
+s5 game  142 as white + checkmate               40.4s
+s2 game  148 as white + checkmate               29.4s
+s3 game  163 as black + checkmate               33.8s
+s1 game  135 as black + checkmate               71.2s
+s1 game  146 as white - checkmate                0.7s
+s1 game  147 as black + checkmate                0.7s
+s5 game  143 as black + checkmate               29.3s
+s4 game  140 as white = insufficient_material   82.0s
+s0 game  145 as black - checkmate              110.1s
+s3 game  174 as white + checkmate               73.0s
+s1 game  158 as white = insufficient_material   65.9s
+s5 game  154 as white - checkmate               65.7s
+s2 game  149 as black - checkmate               85.8s
+s4 game  141 as black + checkmate               52.0s
+s0 game  156 as white + checkmate               44.4s
+s5 game  155 as black + checkmate               50.1s
+s1 game  159 as black - checkmate               63.1s
+s3 game  175 as black + checkmate               65.5s
+s2 game  160 as white + checkmate               57.6s
+s4 game  152 as white - checkmate               58.8s
+s0 game  157 as black = insufficient_material   56.3s
+s3 game  186 as white + checkmate               31.9s
+s5 game  166 as white + checkmate               53.1s
+s1 game  170 as white + checkmate               52.1s
+s4 game  153 as black + checkmate               33.2s
+s1 game  171 as black + checkmate               20.8s
+s2 game  161 as black - checkmate               71.3s
+s5 game  167 as black = threefold_repetition    36.8s
+s0 game  168 as white + checkmate               64.3s
+s4 game  164 as white + checkmate               50.8s
+s3 game  187 as black = fifty_moves             90.2s
+s2 game  172 as white + checkmate               56.9s
+s1 game  182 as white - checkmate               62.4s
+s5 game  178 as white + checkmate               55.3s
+s0 game  169 as black + checkmate               53.0s
+s4 game  165 as black - checkmate               67.4s
+s2 game  173 as black + checkmate               45.8s
+s1 game  183 as black + checkmate               59.2s
+s3 game  198 as white = fifty_moves             82.7s
+s0 game  180 as white - checkmate               62.1s
+s5 game  179 as black - checkmate               68.4s
+s4 game  176 as white + checkmate               55.5s
+s2 game  184 as white + checkmate               58.1s
+s0 game  181 as black - checkmate               37.5s
+s3 game  199 as black + checkmate               56.3s
+s1 game  194 as white - checkmate               71.1s
+s5 game  190 as white + checkmate               60.7s
+s0 game  192 as white + checkmate               26.4s
+s4 game  177 as black - checkmate               49.9s
+s2 game  185 as black = stalemate               72.8s
+s4 game  188 as white + checkmate               34.9s
+s3 game  210 as white = threefold_repetition    60.2s
+s4 game  189 as black + checkmate               21.0s
+s1 game  195 as black + checkmate               77.7s
+s2 game  196 as white + checkmate               48.9s
+
+SPRT decided on the pooled result; stopping workers.
+
+
+versions/bot4_ordering vs versions/bot1_baseline
+  198 games at 8000ms + 500ms
+  +118 =36 -44
+  score 68.7%  (95% interval 63.0% to 74.4%)
+  elo   +136  (95% interval +92 to +186)
+  test  elo0=0 elo1=10, alpha=beta=0.05
+  LLR   +2.99  (accept above +2.94, reject below -2.94)
+  SPRT: PASS. The change is at least five Elo better; merge is justified.
+  terminations: checkmate 162, fifty_moves 6, insufficient_material 10, stalemate 2, threefold_repetition 18
+
+=== stability early-break disabled: one constant, possibly a free ply ===
+6 workers x 50 games, pairs split 6 ways. Pooling every 5s; stopping early if SPRT decides.
+
+s5 game   10 as white = threefold_repetition    32.2s
+s2 game    4 as white + checkmate               43.1s
+s4 game    8 as white + checkmate               43.3s
+s1 game    2 as white = threefold_repetition    47.3s
+s0 game    0 as white = threefold_repetition    51.8s
+s3 game    6 as white + checkmate               67.5s
+s5 game   11 as black + checkmate               58.0s
+s4 game    9 as black + checkmate               60.0s
+s1 game    3 as black + checkmate               62.4s
+s2 game    5 as black - checkmate               68.4s
+s0 game    1 as black - checkmate               63.7s
+s5 game   22 as white + checkmate               33.2s
+s4 game   20 as white = stalemate               50.7s
+s2 game   16 as white = threefold_repetition    43.9s
+s3 game    7 as black = fifty_moves             94.7s
+s1 game   14 as white - checkmate               58.2s
+s5 game   23 as black = threefold_repetition    45.7s
+s0 game   12 as white - checkmate               66.6s
+s4 game   21 as black + checkmate               55.3s
+s2 game   17 as black + checkmate               58.9s
+s3 game   18 as white + checkmate               58.7s
+s5 game   34 as white = threefold_repetition    60.2s
+s4 game   32 as white + checkmate               33.3s
+s0 game   13 as black - checkmate               63.8s
+s1 game   15 as black + checkmate               78.6s
+s4 game   33 as black + checkmate               37.9s
+s5 game   35 as black + checkmate               55.0s
+s0 game   24 as white - checkmate               58.0s
+s3 game   19 as black = threefold_repetition    86.7s
+s1 game   26 as white = insufficient_material   66.4s
+s2 game   28 as white = fifty_moves            108.4s
+s4 game   44 as white = threefold_repetition    65.4s
+s0 game   25 as black - checkmate               54.3s
+s5 game   46 as white = fifty_moves             86.2s
+s3 game   30 as white + checkmate               73.8s
+s1 game   27 as black - checkmate               72.3s
+s2 game   29 as black + checkmate               63.5s
+s4 game   45 as black - checkmate               60.2s
+s3 game   31 as black - checkmate               28.5s
+s0 game   36 as white - checkmate               63.9s
+s1 game   38 as white + checkmate               57.6s
+s2 game   40 as white + checkmate               62.7s
+s5 game   47 as black - checkmate               78.4s
+s4 game   56 as white = threefold_repetition    47.8s
+s3 game   42 as white + checkmate               58.7s
+s1 game   39 as black - checkmate               44.8s
+s0 game   37 as black + checkmate               76.8s
+s5 game   58 as white + checkmate               58.0s
+s2 game   41 as black + checkmate               72.4s
+s3 game   43 as black + checkmate               54.0s
+s4 game   57 as black + checkmate               85.2s
+s1 game   50 as white + checkmate               70.4s
+s0 game   48 as white + checkmate               65.0s
+s5 game   59 as black = insufficient_material   60.4s
+s4 game   68 as white + checkmate               47.8s
+s2 game   52 as white - checkmate               73.6s
+s3 game   54 as white + checkmate               77.6s
+s0 game   49 as black - checkmate               46.1s
+s5 game   70 as white - checkmate               50.2s
+s1 game   51 as black = threefold_repetition    61.1s
+s0 game   60 as white + checkmate               36.5s
+s2 game   53 as black + checkmate               55.4s
+s5 game   71 as black = insufficient_material   43.6s
+s3 game   55 as black + checkmate               62.8s
+s4 game   69 as black - checkmate               77.6s
+s1 game   62 as white + checkmate               81.0s
+s2 game   64 as white - checkmate               73.8s
+s4 game   80 as white + checkmate               59.5s
+s3 game   66 as white + checkmate               69.2s
+s5 game   82 as white + checkmate               76.5s
+s0 game   61 as black - checkmate              118.5s
+s1 game   63 as black - checkmate               64.9s
+s4 game   81 as black + checkmate               52.9s
+s2 game   65 as black + checkmate               71.4s
+s3 game   67 as black - checkmate               69.2s
+s4 game   92 as white + checkmate               43.3s
+s5 game   83 as black = fifty_moves             93.4s
+s1 game   74 as white + checkmate               79.6s
+s0 game   72 as white + checkmate               99.5s
+s3 game   78 as white + checkmate               64.0s
+s5 game   94 as white + checkmate               46.9s
+s4 game   93 as black - checkmate               62.5s
+s0 game   73 as black + checkmate               27.8s
+s1 game   75 as black - checkmate               59.1s
+s2 game   76 as white = adjudication           130.2s
+s5 game   95 as black + checkmate               69.0s
+s0 game   84 as white - checkmate               65.8s
+s1 game   86 as white - checkmate               55.4s
+s3 game   79 as black + checkmate               95.3s
+s4 game  104 as white + checkmate               84.1s
+s2 game   77 as black + checkmate               49.5s
+s5 game  106 as white = threefold_repetition    54.8s
+s1 game   87 as black - checkmate               44.2s
+s0 game   85 as black = insufficient_material   63.8s
+s2 game   88 as white + checkmate               49.7s
+s4 game  105 as black + checkmate               65.7s
+s3 game   90 as white = threefold_repetition    72.6s
+s5 game  107 as black - checkmate               35.8s
+s1 game   98 as white - checkmate               66.5s
+s3 game   91 as black = threefold_repetition    51.0s
+s0 game   96 as white + checkmate               67.6s
+s5 game  118 as white + checkmate               52.7s
+s1 game   99 as black + checkmate               48.0s
+s4 game  116 as white = fifty_moves            108.2s
+s3 game  102 as white + checkmate               62.7s
+s1 game  110 as white + checkmate               39.5s
+s2 game   89 as black = adjudication           138.8s
+s0 game   97 as black + checkmate               74.4s
+s5 game  119 as black + checkmate               74.8s
+s4 game  117 as black - checkmate               28.5s
+s1 game  111 as black - checkmate               46.7s
+s4 game  128 as white + checkmate               41.3s
+s5 game  130 as white - checkmate               45.9s
+s1 game  122 as white + checkmate               15.7s
+s4 game  129 as black = threefold_repetition    29.4s
+s0 game  108 as white - checkmate               81.7s
+s1 game  123 as black - checkmate               42.5s
+s2 game  100 as white = fifty_moves            102.8s
+s3 game  103 as black = threefold_repetition   129.6s
+s4 game  140 as white + checkmate               50.8s
+s1 game  134 as white + checkmate               34.6s
+s5 game  131 as black = fifty_moves             92.4s
+s0 game  109 as black + checkmate               61.2s
+s2 game  101 as black - checkmate               62.4s
+s4 game  141 as black - checkmate               57.5s
+s5 game  142 as white = stalemate               48.2s
+s1 game  135 as black + checkmate               55.6s
+s1 game  146 as white - checkmate                0.6s
+s1 game  147 as black + checkmate                0.6s
+s3 game  114 as white + checkmate               78.3s
+s4 game  152 as white + checkmate               19.6s
+s0 game  120 as white + checkmate               75.7s
+s5 game  143 as black - checkmate               56.7s
+s1 game  158 as white + checkmate               56.5s
+s2 game  112 as white = fifty_moves             89.0s
+s3 game  115 as black - checkmate               66.7s
+s4 game  153 as black = threefold_repetition    55.7s
+s2 game  113 as black = threefold_repetition    31.4s
+s5 game  154 as white + checkmate               46.2s
+s1 game  159 as black - checkmate               49.9s
+s2 game  124 as white - checkmate               30.7s
+s3 game  126 as white = insufficient_material   59.5s
+s4 game  164 as white + checkmate               73.0s
+s0 game  121 as black = fifty_moves            117.2s
+s1 game  170 as white + checkmate               67.7s
+s3 game  127 as black + checkmate               65.9s
+s0 game  132 as white + checkmate               55.5s
+s2 game  125 as black + checkmate               78.4s
+s1 game  171 as black + checkmate               32.2s
+s5 game  155 as black = insufficient_material  109.4s
+s4 game  165 as black = threefold_repetition    81.3s
+s5 game  166 as white = threefold_repetition    29.9s
+s4 game  176 as white = threefold_repetition    34.0s
+s3 game  138 as white = threefold_repetition    72.5s
+s1 game  182 as white + checkmate               64.8s
+s0 game  133 as black = threefold_repetition    74.7s
+s5 game  167 as black = threefold_repetition    65.7s
+s2 game  136 as white = threefold_repetition   100.6s
+s1 game  183 as black + checkmate               47.5s
+s4 game  177 as black - checkmate               62.3s
+s3 game  139 as black - checkmate               66.7s
+s0 game  144 as white + checkmate               71.5s
+s5 game  178 as white + checkmate               49.9s
+s3 game  150 as white + checkmate               44.5s
+s2 game  137 as black + checkmate               74.2s
+s1 game  194 as white - checkmate               68.0s
+s4 game  188 as white = fifty_moves             84.5s
+s5 game  179 as black + checkmate               51.0s
+s3 game  151 as black + checkmate               66.8s
+s2 game  148 as white - checkmate               73.8s
+s0 game  145 as black = adjudication           125.8s
+s4 game  189 as black + checkmate               75.3s
+s2 game  149 as black + checkmate               50.9s
+s1 game  195 as black - adjudication           135.4s
+s5 game  190 as white + checkmate              117.1s
+s2 game  160 as white - checkmate               21.4s
+s3 game  162 as white + checkmate               93.2s
+s4 game  200 as white + checkmate               58.3s
+s0 game  156 as white + checkmate               72.5s
+s1 game  206 as white - checkmate               70.3s
+s4 game  201 as black + checkmate               56.6s
+s2 game  161 as black = fifty_moves             76.1s
+s0 game  157 as black + checkmate               65.5s
+s3 game  163 as black + checkmate               74.8s
+s5 game  191 as black = fifty_moves            111.3s
+s1 game  207 as black - checkmate               55.5s
+s3 game  174 as white - checkmate               52.1s
+s4 game  212 as white - checkmate               69.7s
+s2 game  172 as white - checkmate               68.5s
+s0 game  168 as white = threefold_repetition    64.3s
+s5 game  202 as white = threefold_repetition    46.1s
+s1 game  218 as white + checkmate               36.5s
+s3 game  175 as black - checkmate               50.1s
+s2 game  173 as black + checkmate               55.2s
+s4 game  213 as black = threefold_repetition    63.7s
+s0 game  169 as black - checkmate               62.0s
+s1 game  219 as black - checkmate               64.4s
+s3 game  186 as white + checkmate               37.3s
+s5 game  203 as black - checkmate               73.4s
+s0 game  180 as white + checkmate               25.2s
+s0 game  181 as black = threefold_repetition    38.7s
+s4 game  224 as white + checkmate               74.9s
+s3 game  187 as black + checkmate               58.2s
+s1 game  230 as white + checkmate               62.1s
+s2 game  184 as white - checkmate               85.9s
+s5 game  214 as white - checkmate               63.3s
+s4 game  225 as black + checkmate               50.7s
+s3 game  198 as white + checkmate               47.0s
+s0 game  192 as white + checkmate               62.1s
+s1 game  231 as black + checkmate               59.5s
+s4 game  236 as white - checkmate               44.8s
+s5 game  215 as black - checkmate               84.1s
+s0 game  193 as black + checkmate               40.5s
+s2 game  185 as black = fifty_moves             97.1s
+s3 game  199 as black + checkmate               54.1s
+s1 game  242 as white + checkmate               42.1s
+s2 game  196 as white + checkmate               46.0s
+s0 game  204 as white + checkmate               51.8s
+s3 game  210 as white + checkmate               65.3s
+s4 game  237 as black - checkmate               88.8s
+s5 game  226 as white = insufficient_material  108.8s
+s3 game  211 as black = threefold_repetition    35.5s
+s1 game  243 as black + checkmate              102.2s
+s2 game  197 as black + checkmate               68.6s
+s4 game  248 as white + checkmate               60.0s
+s0 game  205 as black = fifty_moves            115.3s
+s5 game  227 as black + checkmate               61.3s
+s2 game  208 as white - checkmate               50.3s
+s1 game  254 as white - checkmate               66.5s
+s3 game  222 as white + checkmate              101.5s
+s1 game  255 as black - checkmate               55.2s
+s5 game  238 as white + checkmate               70.1s
+s4 game  249 as black - checkmate               95.0s
+s2 game  209 as black + checkmate               77.5s
+s0 game  216 as white + checkmate               98.6s
+s3 game  223 as black - checkmate               62.0s
+s2 game  220 as white = threefold_repetition    38.1s
+s5 game  239 as black - checkmate               66.7s
+s1 game  266 as white = insufficient_material   72.5s
+s4 game  260 as white - checkmate               86.8s
+s3 game  234 as white + checkmate               61.0s
+s0 game  217 as black - checkmate               77.7s
+s1 game  267 as black = threefold_repetition    44.6s
+s0 game  228 as white + checkmate               37.7s
+s5 game  250 as white + checkmate               77.3s
+s4 game  261 as black + checkmate               68.7s
+s3 game  235 as black + checkmate               62.6s
+s2 game  221 as black + checkmate              115.6s
+s0 game  229 as black + checkmate               51.9s
+s2 game  232 as white + checkmate               54.4s
+s1 game  278 as white = fifty_moves            106.6s
+s5 game  251 as black - checkmate               74.7s
+s3 game  246 as white - checkmate               66.3s
+s0 game  240 as white + checkmate               37.7s
+s4 game  272 as white - checkmate               77.9s
+s5 game  262 as white - checkmate               61.6s
+s2 game  233 as black = threefold_repetition    66.3s
+s3 game  247 as black - checkmate               62.0s
+s0 game  241 as black + checkmate               53.8s
+s1 game  279 as black + checkmate               76.1s
+s4 game  273 as black - checkmate               70.2s
+s3 game  258 as white - checkmate               31.2s
+s0 game  252 as white - checkmate               30.3s
+s3 game  259 as black - checkmate               34.6s
+s1 game  290 as white - checkmate               57.4s
+s2 game  244 as white + checkmate               71.7s
+s5 game  263 as black - checkmate               76.9s
+s4 game  284 as white + checkmate               70.7s
+s3 game  270 as white = threefold_repetition    28.7s
+s0 game  253 as black + checkmate               81.3s
+s5 game  274 as white = insufficient_material   44.7s
+s1 game  291 as black + checkmate               77.4s
+s2 game  245 as black - checkmate               76.3s
+s3 game  271 as black + checkmate               65.9s
+s4 game  285 as black + checkmate               70.7s
+s5 game  275 as black + checkmate               47.4s
+s0 game  264 as white + checkmate               51.0s
+s4 game  296 as white - checkmate               27.3s
+s2 game  256 as white + checkmate               59.1s
+s0 game  265 as black - checkmate               43.9s
+s5 game  286 as white + checkmate               68.7s
+s3 game  282 as white = stalemate               76.5s
+s2 game  257 as black - checkmate               35.4s
+s4 game  297 as black + checkmate               59.9s
+s0 game  276 as white - checkmate               64.6s
+s3 game  283 as black + checkmate               37.3s
+s5 game  287 as black + checkmate               67.9s
+s2 game  268 as white - checkmate               71.1s
+s3 game  294 as white + checkmate               48.6s
+s0 game  277 as black + checkmate               60.5s
+s5 game  298 as white + checkmate               52.8s
+s2 game  269 as black + checkmate               71.6s
+s3 game  295 as black - checkmate               72.8s
+s5 game  299 as black + checkmate               51.6s
+s0 game  288 as white + checkmate               73.5s
+s2 game  280 as white + checkmate               45.1s
+s0 game  289 as black + checkmate               60.4s
+s2 game  281 as black - checkmate               41.5s
+s2 game  292 as white = threefold_repetition    57.2s
+s2 game  293 as black + checkmate               49.0s
+
+versions/bot4_nobreak vs versions/bot4_ordering
+  300 games at 8000ms + 500ms
+  +149 =64 -87
+  score 60.3%  (95% interval 55.5% to 65.2%)
+  elo   +73  (95% interval +38 to +109)
+  test  elo0=0 elo1=10, alpha=beta=0.05
+  LLR   +2.22  (accept above +2.94, reject below -2.94)
+  SPRT: undecided. Keep playing.
+  terminations: adjudication 4, checkmate 235, fifty_moves 15, insufficient_material 9, stalemate 3, threefold_repetition 34
+wrote results/SUMMARY.md
+
+# Results — 2026-09-04 07:25 UTC
+
+- machine: yinmint (12 cores, x86_64, Linux)
+- commit: `5459d18` on `main` (uncommitted changes present)
+
+## Failure gate
+
+| run | games | failures | detail |
+|---|---|---|---|
+| bot4_ordering_vs_bot1_baseline | 198 | 0 | clean |
+| nobreak_vs_bot4_ordering | 300 | 0 | clean |
+
+**Gate clean: zero failures across all runs.**
+
+## Match results
+
+| run | control | +W =D -L | score | Elo (95%) | LLR | verdict |
+|---|---|---|---|---|---|---|
+| bot4_ordering_vs_bot1_baseline | 8000ms+500ms | +118 =36 -44 | 68.7% | +136 (+92..+186) | +1.53 | undecided |
+| nobreak_vs_bot4_ordering | 8000ms+500ms | +149 =64 -87 | 60.3% | +73 (+38..+109) | +1.15 | undecided |
+
+Elo intervals are wide at small samples by nature. A verdict of *undecided* means exactly that — not 'probably fine'.
+
+## Selftest
+
+### bot5_nnue2.w256.selftest.txt
+
+```
+tactics
+  ok   tactics/mate in 1, back rank: a1a8
+  ok   tactics/mate in 1, scholar's: f3f7
+  ok   tactics/mate in 2, smothered: g5f7
+  ok   tactics/hangs nothing, must recapture: d8d5
+  ok   tactics/takes a free queen on the file: d1d5
+  ok   tactics/takes a free queen next door: b1b2
+  ok   tactics/mate in 3, white: f6a6
+  ok   tactics/mate in 3, black: d6d1
+  ok   tactics/promotes: a7a8q
+  ok   tactics/takes the draw when lost: a1b2
+edge cases
+  ok   edge/start position: c2c4
+  ok   edge/only one legal move: h1g1
+  ok   edge/en passant available: d2d4
+  ok   edge/black to move, promotion race: g2g1q
+  ok   edge/bare kings plus pawn: e3f4
+  ok   edge/fifty-move clock nearly up: e3d4
+  ok   edge/castling rights all round: d2d4
+  ok   edge/very low clock: g1f3
+  ok   edge/absurdly low clock: g1h3
+  ok   edge/zero clock: g1h3
+  ok   edge/negative clock: g1h3
+malformed input
+  ok   malformed/'': 0000
+  ok   malformed/'not a fen': 0000
+  ok   malformed/'8/8/8/8/8/8/8/8 w - - 0 ': 0000
+  ok   malformed/'rnbqkbnr/pppppppp/8/8/8/': 0000
+endgame conversion
+  ok   conversion/K+R vs K: mate in 15 plies
+  ok   conversion/K+Q vs K: mate in 65 plies
+  ok   conversion/K+2B vs K: mate in 27 plies
+repetition tracking
+  ok   repetition: reconstructed 12 positions from FENs alone
+  ok   repetition: winning line played ['b1b8']
+clock discipline
+  ok   clock: 110 plies, worst ply 14, 4691ms against a 5960ms limit
+       white 59.8s left, black 51.1s left
+
+1 failure(s):
+  FAIL conversion/K+R+B vs K: no mate after 70 plies
+```
+
+
+=== done ===
+  Commit the measurements and the weights that produced them:
+      git add results/ bots/bot5_nnue2/bot5_nnue2.npz
+      git commit -m "bot5_nnue2: measurements" && git push

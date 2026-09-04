@@ -1,0 +1,269 @@
+
+=== check ===
+chess 1.11.2 numba 0.67.0 numpy 2.5.2
+
+0 written, 12 already current
+
+agents ready:
+  versions/bot1_baseline
+  versions/bot2_standard
+  versions/bot3_nnue
+  versions/bot4_ordering
+  versions/bot5_nnue2
+  versions/botA_serena
+  baselines/greedy
+  baselines/minimax
+  baselines/numba
+  baselines/random
+  baselines/stockfish
+
+=== does the network actually load? ===
+bot5: no usable network at /home/yin/chessathon/versions/bot5_nnue2/weights/nnue.npz, using the classical evaluation
+  network loaded: False, hidden 0, cp_scale 1024
+  (expected before training; it MUST read True before the gates stage)
+  tools/openings.py already has 256 positions; leaving it alone
+
+=== data: 6 workers x 1700000 positions ===
+10200051 data/train.csv
+histogram |material|: 0:398630 60:404072 120:150692 180:232656 240:104007 300:118483 360:59155 420:60185 480:60474 540:43099 600:68548
+histogram |material|: 0:399182 60:404959 120:149341 180:233272 240:101118 300:118568 360:58954 420:60693 480:60842 540:44544 600:68548
+histogram |material|: 0:399163 60:403907 120:153137 180:232604 240:102250 300:118298 360:58701 420:60545 480:60949 540:41900 600:68548
+histogram |material|: 0:398938 60:405294 120:149902 180:232664 240:102645 300:118579 360:58862 420:60676 480:60395 540:43501 600:68548
+histogram |material|: 0:399161 60:405417 120:149607 180:232840 240:103779 300:118279 360:58895 420:60334 480:60888 540:42275 600:68548
+histogram |material|: 0:399407 60:404584 120:152164 180:232233 240:102459 300:118536 360:59007 420:60298 480:60228 540:42536 600:68548
+expect roughly 45% of rows inside 120 cp of level, against v3's 31.5%
+
+=== train hidden 256 ===
+parsed 10,200,051 positions in 170.8s
+9,996,050 train, 204,001 val, hidden 256
+epoch   1/40  train 0.01241  val 0.01180  lr 0.0100  1.0 min
+epoch   2/40  train 0.01148  val 0.01148  lr 0.0100  1.8 min
+epoch   3/40  train 0.01125  val 0.01139  lr 0.0099  2.7 min
+epoch   4/40  train 0.01112  val 0.01130  lr 0.0099  3.5 min
+epoch   5/40  train 0.01102  val 0.01127  lr 0.0098  4.4 min
+epoch   6/40  train 0.01094  val 0.01120  lr 0.0096  5.3 min
+epoch   7/40  train 0.01088  val 0.01118  lr 0.0095  6.1 min
+epoch   8/40  train 0.01081  val 0.01116  lr 0.0093  6.9 min
+epoch   9/40  train 0.01075  val 0.01114  lr 0.0091  7.8 min
+epoch  10/40  train 0.01069  val 0.01108  lr 0.0089  8.6 min
+epoch  11/40  train 0.01064  val 0.01105  lr 0.0086  9.5 min
+epoch  12/40  train 0.01058  val 0.01099  lr 0.0083  10.3 min
+epoch  13/40  train 0.01053  val 0.01097  lr 0.0080  11.2 min
+epoch  14/40  train 0.01046  val 0.01090  lr 0.0077  12.0 min
+epoch  15/40  train 0.01039  val 0.01086  lr 0.0074  12.8 min
+epoch  16/40  train 0.01034  val 0.01083  lr 0.0071  13.7 min
+epoch  17/40  train 0.01028  val 0.01081  lr 0.0067  14.5 min
+epoch  18/40  train 0.01023  val 0.01075  lr 0.0064  15.4 min
+epoch  19/40  train 0.01017  val 0.01072  lr 0.0060  16.2 min
+epoch  20/40  train 0.01012  val 0.01070  lr 0.0056  17.1 min
+epoch  21/40  train 0.01006  val 0.01066  lr 0.0053  18.0 min
+epoch  22/40  train 0.01001  val 0.01063  lr 0.0049  18.8 min
+epoch  23/40  train 0.00996  val 0.01061  lr 0.0045  19.7 min
+epoch  24/40  train 0.00990  val 0.01057  lr 0.0041  20.5 min
+epoch  25/40  train 0.00985  val 0.01055  lr 0.0038  21.4 min
+epoch  26/40  train 0.00980  val 0.01052  lr 0.0034  22.2 min
+epoch  27/40  train 0.00976  val 0.01050  lr 0.0031  23.1 min
+epoch  28/40  train 0.00971  val 0.01049  lr 0.0028  23.9 min
+epoch  29/40  train 0.00967  val 0.01047  lr 0.0025  24.8 min
+epoch  30/40  train 0.00963  val 0.01045  lr 0.0022  25.6 min
+epoch  31/40  train 0.00959  val 0.01044  lr 0.0019  26.5 min
+epoch  32/40  train 0.00956  val 0.01043  lr 0.0016  27.4 min
+epoch  33/40  train 0.00953  val 0.01043  lr 0.0014  28.2 min
+epoch  34/40  train 0.00950  val 0.01042  lr 0.0012  29.1 min
+epoch  35/40  train 0.00947  val 0.01041  lr 0.0010  29.9 min
+epoch  36/40  train 0.00945  val 0.01041  lr 0.0009  30.8 min
+epoch  37/40  train 0.00943  val 0.01041  lr 0.0007  31.6 min
+epoch  38/40  train 0.00942  val 0.01040  lr 0.0006  32.5 min
+epoch  39/40  train 0.00941  val 0.01040  lr 0.0006  33.4 min
+epoch  40/40  train 0.00940  val 0.01040  lr 0.0005  34.2 min
+best val 0.01040 -> weights/nnue256.npz
+
+=== train hidden 512 ===
+9,996,050 train, 204,001 val, hidden 512
+epoch   1/40  train 0.01241  val 0.01175  lr 0.0100  1.8 min
+epoch   2/40  train 0.01147  val 0.01151  lr 0.0100  3.6 min
+epoch   3/40  train 0.01118  val 0.01135  lr 0.0099  5.4 min
+epoch   4/40  train 0.01097  val 0.01120  lr 0.0099  7.2 min
+epoch   5/40  train 0.01081  val 0.01112  lr 0.0098  9.0 min
+epoch   6/40  train 0.01067  val 0.01097  lr 0.0096  10.8 min
+epoch   7/40  train 0.01053  val 0.01095  lr 0.0095  12.6 min
+epoch   8/40  train 0.01042  val 0.01086  lr 0.0093  14.3 min
+epoch   9/40  train 0.01033  val 0.01080  lr 0.0091  16.1 min
+epoch  10/40  train 0.01025  val 0.01076  lr 0.0089  17.9 min
+epoch  11/40  train 0.01017  val 0.01074  lr 0.0086  19.6 min
+epoch  12/40  train 0.01009  val 0.01067  lr 0.0083  21.4 min
+epoch  13/40  train 0.01001  val 0.01063  lr 0.0080  23.1 min
+epoch  14/40  train 0.00994  val 0.01057  lr 0.0077  24.9 min
+epoch  15/40  train 0.00986  val 0.01056  lr 0.0074  26.7 min
+epoch  16/40  train 0.00979  val 0.01051  lr 0.0071  28.4 min
+epoch  17/40  train 0.00971  val 0.01045  lr 0.0067  30.2 min
+epoch  18/40  train 0.00963  val 0.01041  lr 0.0064  31.9 min
+epoch  19/40  train 0.00955  val 0.01038  lr 0.0060  33.7 min
+epoch  20/40  train 0.00948  val 0.01035  lr 0.0056  35.4 min
+epoch  21/40  train 0.00940  val 0.01031  lr 0.0053  37.2 min
+epoch  22/40  train 0.00932  val 0.01029  lr 0.0049  38.9 min
+epoch  23/40  train 0.00924  val 0.01024  lr 0.0045  40.7 min
+epoch  24/40  train 0.00917  val 0.01022  lr 0.0041  42.5 min
+epoch  25/40  train 0.00910  val 0.01016  lr 0.0038  44.4 min
+epoch  26/40  train 0.00903  val 0.01016  lr 0.0034  46.1 min
+epoch  27/40  train 0.00897  val 0.01015  lr 0.0031  47.9 min
+epoch  28/40  train 0.00890  val 0.01013  lr 0.0028  49.7 min
+epoch  29/40  train 0.00885  val 0.01011  lr 0.0025  51.4 min
+epoch  30/40  train 0.00879  val 0.01010  lr 0.0022  53.2 min
+epoch  31/40  train 0.00874  val 0.01009  lr 0.0019  54.9 min
+epoch  32/40  train 0.00870  val 0.01008  lr 0.0016  56.8 min
+epoch  33/40  train 0.00866  val 0.01008  lr 0.0014  58.5 min
+epoch  34/40  train 0.00862  val 0.01008  lr 0.0012  60.3 min
+epoch  35/40  train 0.00859  val 0.01007  lr 0.0010  62.1 min
+epoch  36/40  train 0.00856  val 0.01007  lr 0.0009  63.8 min
+epoch  37/40  train 0.00854  val 0.01006  lr 0.0007  65.6 min
+epoch  38/40  train 0.00852  val 0.01007  lr 0.0006  67.3 min
+epoch  39/40  train 0.00850  val 0.01007  lr 0.0006  69.1 min
+epoch  40/40  train 0.00850  val 0.01006  lr 0.0005  70.8 min
+best val 0.01006 -> weights/nnue512.npz
+
+=== gates, hidden 256 ===
+positions        4,000
+reference        versions/bot4_ordering
+slope (hce/net)  0.9452   r=0.942
+cp_scale         968  (file currently carries 1024)
+net  spread      sd   468.0  |mean|    9.3
+hce  spread      sd   469.4  |mean|   16.8
+wrote cp_scale=968 into versions/bot5_nnue2/weights/nnue.npz
+hidden 256, cp_scale 968, weights /home/yin/chessathon/versions/bot5_nnue2/weights/nnue.npz
+position                   kernel      float    diff
+start position                 12         12      -0
+white a queen up              725        727      -2
+black a queen up             -719       -719       0
+white a rook up               587        587      -0
+white a knight up             538        539      -1
+white a pawn up                94         95      -1
+K+R vs K                      478        479      -1
+king and pawn                 293        293      -0
+italian, level                -30        -29      -1
+
+quantisation error over 3,000 positions:
+  mean abs 0.6 cp, max 2 cp
+
+agreement with the Stockfish labels it was trained against:
+  mean abs error 94 cp
+  correlation    0.946
+versions/bot5_nnue2: network loaded True, arm 256/256
+  collected 2000/2000
+
+mae in centipawns against Stockfish; slope 1.00 means the same scale
+ all positions
+  bot5_nnue2               n=2000  mae=   120  r= 0.542  slope= 0.34  sign=75.4%
+  bot4_ordering            n=2000  mae=   133  r= 0.374  slope= 0.14  sign=71.9%
+ quiet
+  bot5_nnue2               n=1495  mae=    98  r= 0.587  slope= 0.39  sign=76.0%
+  bot4_ordering            n=1495  mae=   108  r= 0.461  slope= 0.18  sign=74.8%
+ quiet + level material
+  bot5_nnue2               n=995   mae=    91  r= 0.475  slope= 0.30  sign=71.0%
+  bot4_ordering            n=995   mae=    87  r= 0.378  slope= 0.11  sign=72.2%
+ quiet + king exposed
+  bot5_nnue2               n=21    mae=   255  r= 0.678  slope= 0.29  sign=81.0%
+  bot4_ordering            n=21    mae=   321  r= 0.216  slope= 0.06  sign=66.7%
+ in check or capture best
+  bot5_nnue2               n=505   mae=   187  r= 0.489  slope= 0.28  sign=73.7%
+  bot4_ordering            n=505   mae=   209  r= 0.253  slope= 0.09  sign=63.4%
+
+GATE PASS: quiet level r: bot5_nnue2 0.475 against bot4_ordering 0.378
+
+=== gates, hidden 512 ===
+positions        4,000
+reference        versions/bot4_ordering
+slope (hce/net)  0.8721   r=0.953
+cp_scale         893  (file currently carries 1024)
+net  spread      sd   513.3  |mean|   11.2
+hce  spread      sd   469.4  |mean|   16.8
+wrote cp_scale=893 into versions/bot5_nnue2/weights/nnue.npz
+hidden 512, cp_scale 893, weights /home/yin/chessathon/versions/bot5_nnue2/weights/nnue.npz
+position                   kernel      float    diff
+start position                 14         15      -1
+white a queen up              965        965      -0
+black a queen up             -941       -941      -0
+white a rook up               675        676      -1
+white a knight up             532        533      -1
+white a pawn up                86         86      -0
+K+R vs K                      555        556      -1
+king and pawn                 275        275      -0
+italian, level                  0          0      -0
+
+quantisation error over 3,000 positions:
+  mean abs 0.6 cp, max 2 cp
+
+agreement with the Stockfish labels it was trained against:
+  mean abs error 97 cp
+  correlation    0.945
+versions/bot5_nnue2: network loaded True, arm 256/256
+  collected 2000/2000
+
+mae in centipawns against Stockfish; slope 1.00 means the same scale
+ all positions
+  bot5_nnue2               n=2000  mae=   122  r= 0.517  slope= 0.31  sign=75.5%
+  bot4_ordering            n=2000  mae=   133  r= 0.374  slope= 0.14  sign=71.9%
+ quiet
+  bot5_nnue2               n=1495  mae=    98  r= 0.561  slope= 0.35  sign=76.5%
+  bot4_ordering            n=1495  mae=   108  r= 0.461  slope= 0.18  sign=74.8%
+ quiet + level material
+  bot5_nnue2               n=995   mae=    82  r= 0.535  slope= 0.31  sign=74.9%
+  bot4_ordering            n=995   mae=    87  r= 0.378  slope= 0.11  sign=72.2%
+ quiet + king exposed
+  bot5_nnue2               n=21    mae=   211  r= 0.880  slope= 0.34  sign=76.2%
+  bot4_ordering            n=21    mae=   321  r= 0.216  slope= 0.06  sign=66.7%
+ in check or capture best
+  bot5_nnue2               n=505   mae=   193  r= 0.463  slope= 0.25  sign=72.5%
+  bot4_ordering            n=505   mae=   209  r= 0.253  slope= 0.09  sign=63.4%
+
+GATE PASS: quiet level r: bot5_nnue2 0.535 against bot4_ordering 0.378
+passed: 256 512 
+  agent.py <- bots/bot5_nnue2/bot5_nnue2.py
+  weights/nnue.npz <- bots/bot5_nnue2/bot5_nnue2.npz
+
+root agent.py is now bot5_nnue2. Run the gate before zipping:
+  uv run python -m tools.selftest
+  uv run python -m harness.package && unzip -l submission.zip
+
+=== selftest, arm 256 ===
+tactics
+  ok   tactics/mate in 1, back rank: a1a8
+  ok   tactics/mate in 1, scholar's: f3f7
+  ok   tactics/mate in 2, smothered: g5f7
+  ok   tactics/hangs nothing, must recapture: d8d5
+  ok   tactics/takes a free queen on the file: d1d5
+  ok   tactics/takes a free queen next door: b1b2
+  ok   tactics/mate in 3, white: f6a6
+  ok   tactics/mate in 3, black: d6d1
+  ok   tactics/promotes: a7a8q
+  ok   tactics/takes the draw when lost: a1b2
+edge cases
+  ok   edge/start position: c2c4
+  ok   edge/only one legal move: h1g1
+  ok   edge/en passant available: d2d4
+  ok   edge/black to move, promotion race: g2g1q
+  ok   edge/bare kings plus pawn: e3f4
+  ok   edge/fifty-move clock nearly up: e3d4
+  ok   edge/castling rights all round: d2d4
+  ok   edge/very low clock: g1f3
+  ok   edge/absurdly low clock: g1h3
+  ok   edge/zero clock: g1h3
+  ok   edge/negative clock: g1h3
+malformed input
+  ok   malformed/'': 0000
+  ok   malformed/'not a fen': 0000
+  ok   malformed/'8/8/8/8/8/8/8/8 w - - 0 ': 0000
+  ok   malformed/'rnbqkbnr/pppppppp/8/8/8/': 0000
+endgame conversion
+  ok   conversion/K+R vs K: mate in 15 plies
+  ok   conversion/K+Q vs K: mate in 65 plies
+  ok   conversion/K+2B vs K: mate in 27 plies
+repetition tracking
+  ok   repetition: reconstructed 12 positions from FENs alone
+  ok   repetition: winning line played ['b1b8']
+clock discipline
+  ok   clock: 110 plies, worst ply 14, 4691ms against a 5960ms limit
+       white 59.8s left, black 51.1s left
+
+1 failure(s):
+  FAIL conversion/K+R+B vs K: no mate after 70 plies

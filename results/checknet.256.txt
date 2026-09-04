@@ -1,0 +1,18 @@
+hidden 256, cp_scale 968, weights /home/yin/chessathon/versions/bot5_nnue2/weights/nnue.npz
+position                   kernel      float    diff
+start position                 12         12      -0
+white a queen up              725        727      -2
+black a queen up             -719       -719       0
+white a rook up               587        587      -0
+white a knight up             538        539      -1
+white a pawn up                94         95      -1
+K+R vs K                      478        479      -1
+king and pawn                 293        293      -0
+italian, level                -30        -29      -1
+
+quantisation error over 3,000 positions:
+  mean abs 0.6 cp, max 2 cp
+
+agreement with the Stockfish labels it was trained against:
+  mean abs error 94 cp
+  correlation    0.946

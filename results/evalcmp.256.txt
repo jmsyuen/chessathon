@@ -1,0 +1,21 @@
+versions/bot5_nnue2: network loaded True, arm 256/256
+  collected 2000/2000
+
+mae in centipawns against Stockfish; slope 1.00 means the same scale
+ all positions
+  bot5_nnue2               n=2000  mae=   120  r= 0.542  slope= 0.34  sign=75.4%
+  bot4_ordering            n=2000  mae=   133  r= 0.374  slope= 0.14  sign=71.9%
+ quiet
+  bot5_nnue2               n=1495  mae=    98  r= 0.587  slope= 0.39  sign=76.0%
+  bot4_ordering            n=1495  mae=   108  r= 0.461  slope= 0.18  sign=74.8%
+ quiet + level material
+  bot5_nnue2               n=995   mae=    91  r= 0.475  slope= 0.30  sign=71.0%
+  bot4_ordering            n=995   mae=    87  r= 0.378  slope= 0.11  sign=72.2%
+ quiet + king exposed
+  bot5_nnue2               n=21    mae=   255  r= 0.678  slope= 0.29  sign=81.0%
+  bot4_ordering            n=21    mae=   321  r= 0.216  slope= 0.06  sign=66.7%
+ in check or capture best
+  bot5_nnue2               n=505   mae=   187  r= 0.489  slope= 0.28  sign=73.7%
+  bot4_ordering            n=505   mae=   209  r= 0.253  slope= 0.09  sign=63.4%
+
+GATE PASS: quiet level r: bot5_nnue2 0.475 against bot4_ordering 0.378

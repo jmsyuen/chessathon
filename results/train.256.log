@@ -1,0 +1,43 @@
+parsed 10,200,051 positions in 170.8s
+9,996,050 train, 204,001 val, hidden 256
+epoch   1/40  train 0.01241  val 0.01180  lr 0.0100  1.0 min
+epoch   2/40  train 0.01148  val 0.01148  lr 0.0100  1.8 min
+epoch   3/40  train 0.01125  val 0.01139  lr 0.0099  2.7 min
+epoch   4/40  train 0.01112  val 0.01130  lr 0.0099  3.5 min
+epoch   5/40  train 0.01102  val 0.01127  lr 0.0098  4.4 min
+epoch   6/40  train 0.01094  val 0.01120  lr 0.0096  5.3 min
+epoch   7/40  train 0.01088  val 0.01118  lr 0.0095  6.1 min
+epoch   8/40  train 0.01081  val 0.01116  lr 0.0093  6.9 min
+epoch   9/40  train 0.01075  val 0.01114  lr 0.0091  7.8 min
+epoch  10/40  train 0.01069  val 0.01108  lr 0.0089  8.6 min
+epoch  11/40  train 0.01064  val 0.01105  lr 0.0086  9.5 min
+epoch  12/40  train 0.01058  val 0.01099  lr 0.0083  10.3 min
+epoch  13/40  train 0.01053  val 0.01097  lr 0.0080  11.2 min
+epoch  14/40  train 0.01046  val 0.01090  lr 0.0077  12.0 min
+epoch  15/40  train 0.01039  val 0.01086  lr 0.0074  12.8 min
+epoch  16/40  train 0.01034  val 0.01083  lr 0.0071  13.7 min
+epoch  17/40  train 0.01028  val 0.01081  lr 0.0067  14.5 min
+epoch  18/40  train 0.01023  val 0.01075  lr 0.0064  15.4 min
+epoch  19/40  train 0.01017  val 0.01072  lr 0.0060  16.2 min
+epoch  20/40  train 0.01012  val 0.01070  lr 0.0056  17.1 min
+epoch  21/40  train 0.01006  val 0.01066  lr 0.0053  18.0 min
+epoch  22/40  train 0.01001  val 0.01063  lr 0.0049  18.8 min
+epoch  23/40  train 0.00996  val 0.01061  lr 0.0045  19.7 min
+epoch  24/40  train 0.00990  val 0.01057  lr 0.0041  20.5 min
+epoch  25/40  train 0.00985  val 0.01055  lr 0.0038  21.4 min
+epoch  26/40  train 0.00980  val 0.01052  lr 0.0034  22.2 min
+epoch  27/40  train 0.00976  val 0.01050  lr 0.0031  23.1 min
+epoch  28/40  train 0.00971  val 0.01049  lr 0.0028  23.9 min
+epoch  29/40  train 0.00967  val 0.01047  lr 0.0025  24.8 min
+epoch  30/40  train 0.00963  val 0.01045  lr 0.0022  25.6 min
+epoch  31/40  train 0.00959  val 0.01044  lr 0.0019  26.5 min
+epoch  32/40  train 0.00956  val 0.01043  lr 0.0016  27.4 min
+epoch  33/40  train 0.00953  val 0.01043  lr 0.0014  28.2 min
+epoch  34/40  train 0.00950  val 0.01042  lr 0.0012  29.1 min
+epoch  35/40  train 0.00947  val 0.01041  lr 0.0010  29.9 min
+epoch  36/40  train 0.00945  val 0.01041  lr 0.0009  30.8 min
+epoch  37/40  train 0.00943  val 0.01041  lr 0.0007  31.6 min
+epoch  38/40  train 0.00942  val 0.01040  lr 0.0006  32.5 min
+epoch  39/40  train 0.00941  val 0.01040  lr 0.0006  33.4 min
+epoch  40/40  train 0.00940  val 0.01040  lr 0.0005  34.2 min
+best val 0.01040 -> weights/nnue256.npz
