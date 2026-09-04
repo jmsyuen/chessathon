@@ -3,7 +3,8 @@
 # and the network is read from the .npz unchanged.
 #
 #   bash tools/sweep.sh nobreak    ~30 min  does the stability break compose?
-#   bash tools/sweep.sh weight     ~2 h     NET_WEIGHT 96 / 160 / 192 vs the reference
+#   bash tools/sweep.sh weight     ~2 h     NET_WEIGHT sweep vs the reference
+#   bash tools/sweep.sh weight 48 64 80      sweep specific values
 #
 # Why this builds directories instead of setting CHESSATHON_NET_WEIGHT:
 # the harness spawns both agents as children of one h2h process and they inherit
@@ -56,7 +57,9 @@ case "${1:-}" in
     REF="${REF:-bot5_blend_nb}"       # set REF=bot5_blend if nobreak did not pass
     STABLE=99; [ "$REF" = "bot5_blend" ] && STABLE=3
     variant "$REF" 128 "$STABLE"
-    for w in 96 160 192; do
+    shift || true
+    WEIGHTS=("$@"); [ ${#WEIGHTS[@]} -gt 0 ] || WEIGHTS=(96 160 192)
+    for w in "${WEIGHTS[@]}"; do
       variant "bot5_w$w" "$w" "$STABLE"
       match "bot5_w$w" "$REF" "sweep_w$w"
     done
