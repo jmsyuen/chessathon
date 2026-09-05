@@ -1,15 +1,20 @@
-# Results — 2026-09-04 17:24 UTC
+# Results — 2026-09-05 03:30 UTC
 
 - machine: yinmint (12 cores, x86_64, Linux)
-- commit: `bc9720c` on `main` (uncommitted changes present)
+- commit: `94bc6c7` on `main` (uncommitted changes present)
 
 ## Failure gate
 
 | run | games | failures | detail |
 |---|---|---|---|
 | bot4_ordering_vs_bot1_baseline | 198 | 0 | clean |
+| bot5_1_vs_bot5 | 204 | 0 | clean |
 | bot5_nnue2_w128_vs_bot4_ordering | 59 | 0 | clean |
 | bot5_nnue2_w256_vs_bot4_ordering | 427 | 0 | clean |
+| bot6_gate | 22 | 0 | clean |
+| bot6_vs_bot4_nobreak | 56 | 0 | clean |
+| bot6_vs_bot5_1 | 408 | 0 | clean |
+| bot6_vs_bot5_1_realcontrol | 24 | 0 | clean |
 | nobreak_vs_bot4_ordering | 300 | 0 | clean |
 | sweep_nobreak | 156 | 0 | clean |
 | sweep_w160 | 156 | 0 | clean |
@@ -23,8 +28,13 @@
 | run | control | +W =D -L | score | Elo (95%) | LLR | verdict |
 |---|---|---|---|---|---|---|
 | bot4_ordering_vs_bot1_baseline | 8000ms+500ms | +118 =36 -44 | 68.7% | +136 (+92..+186) | +1.53 | undecided |
+| bot5_1_vs_bot5 | 8000ms+500ms | +95 =35 -74 | 55.1% | +36 (-7..+80) | +0.34 | undecided |
 | bot5_nnue2_w128_vs_bot4_ordering | 8000ms+500ms | +47 =7 -5 | 85.6% | +310 (+218..+460) | +1.50 | undecided |
 | bot5_nnue2_w256_vs_bot4_ordering | 8000ms+500ms | +240 =42 -145 | 61.1% | +79 (+47..+111) | +1.55 | undecided |
+| bot6_gate | 3000ms+100ms | +22 =0 -0 | 100.0% | n/a | +3.53 | **PASS** |
+| bot6_vs_bot4_nobreak | 8000ms+500ms | +41 =6 -9 | 78.6% | +226 (+137..+353) | +0.77 | undecided |
+| bot6_vs_bot5_1 | 8000ms+500ms | +173 =49 -186 | 48.4% | -11 (-43..+21) | -0.26 | undecided |
+| bot6_vs_bot5_1_realcontrol | 120000ms+500ms | +9 =1 -14 | 39.6% | -73 (-236..+61) | -0.08 | undecided |
 | nobreak_vs_bot4_ordering | 8000ms+500ms | +149 =64 -87 | 60.3% | +73 (+38..+109) | +1.15 | undecided |
 | sweep_nobreak | 8000ms+500ms | +69 =27 -60 | 52.9% | +20 (-30..+70) | +0.14 | undecided |
 | sweep_w160 | 8000ms+500ms | +54 =40 -62 | 47.4% | -18 (-66..+29) | -0.18 | undecided |

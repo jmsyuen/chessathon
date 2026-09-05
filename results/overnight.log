@@ -1,0 +1,99 @@
+nohup: ignoring input
+
+[1m=== 0/6 PREFLIGHT ===[0m 01:25:31
+  interpreter: uv run --no-sync python
+  uv sync (idempotent; slow only the first time — torch is ~200 MB)
+Resolved 26 packages in 0.71ms
+Checked 24 packages in 0.25ms
+  py 3.12.14 chess 1.11.2 numba 0.67.0
+  baselines/numba
+  baselines/random
+  baselines/stockfish
+
+[1m=== 0b/6 NET LOAD ASSERTION ===[0m 01:25:31
+  bot5_nnue2     net=True  hidden=512  NET_WEIGHT=128  STABLE_ITERATIONS=3
+  bot5.1_nnue2   net=True  hidden=512  NET_WEIGHT=128  STABLE_ITERATIONS=99
+
+[1m=== 1/6 CORRECTNESS GATE ===[0m 01:25:34
+  bot4_nobreak:        white 52.5s left, black 51.4s left  all checks passed 
+  bot5_nnue2:        white 94.1s left, black 91.4s left  all checks passed 
+  bot5.1_nnue2:        white 51.2s left, black 50.8s left  all checks passed 
+  bot6B_numbas:        white 29.7s left, black 29.3s left  all checks passed 
+  bot6B perft: ALL PASS
+
+[1m=== 2/6 FAILURE GATE (400 games, ply-cap 300) ===[0m 01:39:01
+versions/bot6B_numbas vs baselines/greedy
+  22 games at 3000ms + 100ms
+  +22 =0 -0
+  score 100.0%  (95% interval 100.0% to 100.0%)
+  elo   +inf (a clean sweep bounds nothing)
+  test  elo0=0 elo1=5, alpha=beta=0.05
+  LLR   +3.53  (accept above +2.94, reject below -2.94)
+  SPRT: PASS. The change is at least five Elo better; merge is justified.
+  terminations: checkmate 22
+
+[1m=== 3/6 MATCH A — bot5.1 vs bot5   (does the break merge pay?) ===[0m 01:40:06
+versions/bot5.1_nnue2 vs versions/bot5_nnue2
+  204 games at 8000ms + 500ms
+  +95 =35 -74
+  score 55.1%  (95% interval 48.9% to 61.4%)
+  elo   +36  (95% interval -7 to +80)
+  test  elo0=0 elo1=20, alpha=beta=0.05
+  LLR   +1.06  (accept above +2.94, reject below -2.94)
+  SPRT: undecided. Keep playing.
+  terminations: adjudication 27, checkmate 151, fifty_moves 2, insufficient_material 6, threefold_repetition 18
+
+[1m=== 4/6 MATCH B — bot6 vs bot5.1   (THE DECISION) ===[0m 02:22:57
+versions/bot6B_numbas vs versions/bot5.1_nnue2
+  408 games at 8000ms + 500ms
+  +173 =49 -186
+  score 48.4%  (95% interval 43.9% to 53.0%)
+  elo   -11  (95% interval -43 to +21)
+  test  elo0=0 elo1=20, alpha=beta=0.05
+  LLR   -1.62  (accept above +2.94, reject below -2.94)
+  SPRT: undecided. Keep playing.
+  terminations: adjudication 40, checkmate 330, fifty_moves 1, insufficient_material 12, threefold_repetition 25
+
+[1m=== 5/6 MATCH C — bot6 vs bot4_nobreak   (kernel or eval?) ===[0m 03:58:03
+versions/bot6B_numbas vs versions/bot4_nobreak
+  56 games at 8000ms + 500ms
+  +41 =6 -9
+  score 78.6%  (95% interval 68.7% to 88.4%)
+  elo   +226  (95% interval +137 to +353)
+  test  elo0=0 elo1=20, alpha=beta=0.05
+  LLR   +2.96  (accept above +2.94, reject below -2.94)
+  SPRT: PASS. The change is at least five Elo better; merge is justified.
+  terminations: adjudication 3, checkmate 48, insufficient_material 1, threefold_repetition 4
+
+[1m=== 6/6 METRIC 5 — 24 games at the REAL 120s + 0.5s ===[0m 04:09:49
+versions/bot6B_numbas vs versions/bot5.1_nnue2
+  24 games at 120000ms + 500ms
+  +9 =1 -14
+  score 39.6%  (95% interval 20.4% to 58.7%)
+  elo   -73  (95% interval -236 to +61)
+  test  elo0=0 elo1=5, alpha=beta=0.05
+  LLR   -0.08  (accept above +2.94, reject below -2.94)
+  SPRT: undecided. Keep playing.
+  terminations: checkmate 23, threefold_repetition 1
+
+[1m=== COLLECT ===[0m 04:30:09
+
+1 failure(s):
+  FAIL tactics/hangs nothing, must recapture: played c7c6, wanted one of ['d8d5', 'f6d5']
+```
+
+
+[1m=== VERDICT ===[0m
+MATCH A  bot5.1 vs bot5     n= 204  +95 =35 -74  score=55.1%  failures=0
+MATCH B  bot6 vs bot5.1     n= 408  +173 =49 -186  score=48.4%  failures=0
+MATCH C  bot6 vs bot4_nb    n=  56  +41 =6 -9  score=78.6%  failures=0
+REAL     bot6 vs bot5.1     n=  24  +9 =1 -14  score=39.6%  failures=0
+GATE     bot6 vs greedy     n=  22  +22 =0 -0  score=100.0%  failures=0
+
+SHIP: bot5.1_nnue2
+
+Then, and never skip the ship step:
+  uv run python -m tools.agents --ship <BUILD>
+  uv run python -m tools.selftest
+  uv run python -m harness.package
+  unzip -l submission.zip | grep -iE 'spar|stockfish|engine'   # must be empty
