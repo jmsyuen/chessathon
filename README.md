@@ -1,3 +1,12 @@
+# Results
+
+![alt text](image.png)
+
+Final ladder results:
+147/465
+
+Final submitted version: v5.1
+
 # AI Chessathon starter
 
 Fork this to build an agent for [AI Chessathon](https://aichessathon.com). It gives you a working
